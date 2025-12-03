@@ -1,1 +1,61 @@
-todo
+# DigiByte Adamantine Wallet — Example Node Configuration
+# Status: draft v0.1
+#
+# This file provides example configurations for:
+# - DigiByte full nodes
+# - Enigmatic Layer-0 message relay nodes
+# - Shield stack endpoints (Sentinel, DQSN, ADN, Adaptive Core)
+
+digibyte_nodes:
+  mainnet:
+    - name: dgb-main-1
+      rpc_url: "http://127.0.0.1:14022"
+      rpc_user: "rpcuser"
+      rpc_password: "rpcpass"
+      timeout_seconds: 8
+    - name: dgb-main-2
+      rpc_url: "https://publicnode.digibyte.co/rpc"
+      rpc_user: ""
+      rpc_password: ""
+      timeout_seconds: 10
+
+  testnet:
+    - name: dgb-test-1
+      rpc_url: "http://127.0.0.1:14023"
+      rpc_user: "testuser"
+      rpc_password: "testpass"
+      timeout_seconds: 8
+
+enigmatic_nodes:
+  # Layer-0 messaging peers used for decoding and intent observation.
+  watchers:
+    - "wss://enigmatic1.example.com/stream"
+    - "wss://enigmatic2.example.com/stream"
+
+  planners:
+    # Nodes capable of planning state-vector frames.
+    - "https://enigmatic-planner.example.com/api"
+
+shield_nodes:
+  sentinel:
+    url: "https://sentinel.adamantine.example.com/v1"
+    timeout_seconds: 5
+
+  dqsn:
+    url: "https://dqsn.adamantine.example.com/v1"
+    timeout_seconds: 5
+
+  adn:
+    url: "https://adn.adamantine.example.com/v1"
+    timeout_seconds: 5
+
+  adaptive_core:
+    url: "https://adaptive-core.adamantine.example.com/v1"
+    timeout_seconds: 7
+
+defaults:
+  # Which networks clients should use by default.
+  digibyte_network: "mainnet"
+  auto_failover: true
+  max_retry_attempts: 3
+  retry_delay_seconds: 2
