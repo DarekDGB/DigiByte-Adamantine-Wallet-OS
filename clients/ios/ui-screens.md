@@ -1,67 +1,93 @@
 # Adamantine iOS Client — UI Screens
 
-This file describes the **screen structure** for the iOS app using SwiftUI patterns.
+This file defines the **iOS UI layout** using SwiftUI conventions.
 
-## 1. Main Tabs
-- Home
-- Wallet
-- Enigmatic
-- Shield
-- Settings
+## 1. Dashboard
+- DGB balance card
+- DigiDollar (DD) balance card
+- DigiAssets summary (top 3 assets + “View all”)
+- Shield indicators (Sentinel / DQSN / ADN / Adaptive Core)
+- Quick actions: Send / Receive / Mint DD / Send Asset / Messages
 
-## 2. Home / Dashboard
-- Total DGB balance
-- Total DD balance
-- Quick actions: Send / Receive / Mint DD / Chat
-- Small shield status strip (Sentinel / DQSN / ADN / Adaptive)
+## 2. Accounts
+- Account list
+- Account details
+- QR receive screen
+- Transaction history (DGB / DD / DigiAssets filter tabs)
 
-## 3. Wallet Screens
-### 3.1 Accounts List
-- List of accounts with balances
-- Add / manage accounts
-
-### 3.2 Account Detail
-- Balance
-- Recent transactions
-- Buttons: Send / Receive / View DD
-
-### 3.3 Send Flow
-- Amount + asset (DGB)
-- Contact / address picker
-- Guardian pre-check sheet
-- Confirmation view with TXID
+## 3. Send Flow (DGB / DD)
+- Amount entry
+- Asset selector (DGB / DD)
+- Contact / address selector
+- Guardian review screen
+- Final confirmation + Shield diagnostics summary
 
 ## 4. DigiDollar (DD)
-### 4.1 DD Overview
-- Total DD + backing DGB
-- Positions list preview
-- Buttons: Mint / Redeem
+### Mint
+- Select funding account
+- Enter DD amount
+- Oracle / rate info panel
+- Review screen (fees, limits, shield hints)
+- Shield diagnostics preflight
+- Mint success screen with transaction hash
 
-### 4.2 Mint Flow
-- Select backing account
-- Enter amount
-- Review + shield insight
-- Confirmation
+### Redeem
+- Position selector
+- Amount mode (full / partial)
+- Guardian approval step
+- Network fee preview
+- TX confirmation + status updates
 
-### 4.3 Redeem Flow
-- Select position or amount
-- Choose target address
-- Guardian step
-- Redeem confirmation
+## 5. DigiAssets
+### Asset List
+- Shows all DigiAssets owned
+- Filters: Fungible / NFTs / Favorites
+- Search by name / ticker / asset ID
 
-## 5. Enigmatic
-- Conversation list (with unread badges)
-- Chat view (bubbles, timestamps)
-- Payment request bubbles with Accept/Reject
-- Contact info sheet (trust, verification status)
+### Asset Detail
+- Icon, name, ticker, balance
+- Metadata section
+- Supply info
+- Asset-specific history
+- Actions: Send / Receive
 
-## 6. Shield
-- Overall shield status overview
-- Sentinel / DQSN / ADN / Adaptive cards
-- “More details” links to diagnostics
+### Send Asset Flow
+- Recipient entry
+- Amount entry
+- Guardian rule summary
+- Shield risk summary
+- Final confirmation
 
-## 7. Settings
-- Profile & identity
-- Guardian profiles & thresholds
-- Telemetry opt-in
-- Advanced / developer options
+### Receive Asset
+- QR code
+- Address copy button
+- Explanation: “Sender must use DigiAssets-compatible wallet”
+
+### Issue / Mint New Asset
+- Name, ticker, supply rules, decimals
+- Metadata URI
+- Fee estimate
+- Shield preflight simulation
+- Final confirmation with irreversible warning
+
+## 6. Enigmatic Chat
+- Conversation list
+- Chat view with message bubbles
+- Payment requests (DGB / DD / assets)
+- Accept / Reject actions
+- Encryption status indicator
+
+## 7. Shield Diagnostics
+- Global shield health
+- Sentinel metrics
+- DQSN confidence
+- ADN node-status simulation
+- Adaptive Core behaviour drift logs
+- Export diagnostics
+
+## 8. Settings
+- Profile & display name
+- Identity keys (view / rotate / backup instructions)
+- Guardian rules
+- Privacy & telemetry
+- Network settings (RPC endpoints, testnet toggle)
