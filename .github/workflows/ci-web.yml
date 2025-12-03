@@ -1,1 +1,34 @@
-todo
+name: Web CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  web-docs-check:
+    name: Verify Web client structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure web client folder exists
+        run: |
+          if [ ! -d "./clients/web" ]; then
+            echo "clients/web folder is missing."
+            exit 1
+          fi
+          echo "✅ clients/web folder found."
+
+      - name: List web client files
+        run: |
+          echo "📁 Web client tree:"
+          ls -R ./clients/web
+
+      # TODO: When the real web app is added, extend this job with:
+      # - Node / pnpm / yarn install
+      # - Lint + unit tests
+      # - Optional build step for deployment
