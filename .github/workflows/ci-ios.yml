@@ -1,1 +1,34 @@
-todo
+name: iOS CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  ios-docs-check:
+    name: Verify iOS client structure
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Ensure iOS client folder exists
+        run: |
+          if [ ! -d "./clients/ios" ]; then
+            echo "clients/ios folder is missing."
+            exit 1
+          fi
+          echo "✅ clients/ios folder found."
+
+      - name: List iOS client files
+        run: |
+          echo "📁 iOS client tree:"
+          ls -R ./clients/ios
+
+      # TODO: When the native iOS app is added, extend this job with:
+      # - Xcode project / workspace detection
+      # - xcodebuild build + unit tests
+      # - fastlane integration (optional)
