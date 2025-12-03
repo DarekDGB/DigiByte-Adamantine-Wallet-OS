@@ -1,1 +1,28 @@
-todo
+name: Lint Docs
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  docs-lint:
+    name: Validate Markdown docs structure
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install markdownlint
+        run: |
+          npm install -g markdownlint-cli
+
+      - name: Lint all .md files
+        run: |
+          echo "🔍 Running markdown linting..."
+          markdownlint "**/*.md" || exit 1
+
+      - name: Show success message
+        run: echo "✅ Documentation lint passed!"
