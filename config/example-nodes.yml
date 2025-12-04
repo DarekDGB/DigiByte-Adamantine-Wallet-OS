@@ -1,61 +1,71 @@
-# DigiByte Adamantine Wallet — Example Node Configuration
-# Status: draft v0.1
+# Example DigiByte node configurations for Adamantine Wallet
 #
-# This file provides example configurations for:
-# - DigiByte full nodes
-# - Enigmatic Layer-0 message relay nodes
-# - Shield stack endpoints (Sentinel, DQSN, ADN, Adaptive Core)
+# This file is illustrative only. Real deployments should provide their own
+# node list and secrets via environment or secure config.
+#
+# Adamantine can talk to:
+#   - a local Digi-Mobile node on Android (preferred when available)
+#   - remote DigiByte Core nodes
+#   - testnet nodes for development
 
-digibyte_nodes:
-  mainnet:
-    - name: dgb-main-1
-      rpc_url: "http://127.0.0.1:14022"
-      rpc_user: "rpcuser"
-      rpc_password: "rpcpass"
-      timeout_seconds: 8
-    - name: dgb-main-2
-      rpc_url: "https://publicnode.digibyte.co/rpc"
-      rpc_user: ""
-      rpc_password: ""
-      timeout_seconds: 10
+version: "1"
 
-  testnet:
-    - name: dgb-test-1
-      rpc_url: "http://127.0.0.1:14023"
-      rpc_user: "testuser"
-      rpc_password: "testpass"
-      timeout_seconds: 8
+nodes:
+  # -------------------------------------------------------------------------
+  # 1. Local Digi-Mobile node (Android)
+  # -------------------------------------------------------------------------
+  - id: digimobile_local
+    label: "Local Digi-Mobile node"
+    kind: digibyte-core
+    host: 127.0.0.1
+    rpc_port: 8332          # Adjust if Digi-Mobile uses a different port
+    tls: false
+    priority: 100           # Highest priority when reachable
+    timeout_ms: 2000
+    notes: >
+      Digi-Mobile provides a pruned, Android-friendly DigiByte Core full node.
+      Adamantine treats it as a first-class backend when running on Android.
 
-enigmatic_nodes:
-  # Layer-0 messaging peers used for decoding and intent observation.
-  watchers:
-    - "wss://enigmatic1.example.com/stream"
-    - "wss://enigmatic2.example.com/stream"
+  # -------------------------------------------------------------------------
+  # 2. Primary remote mainnet node
+  # -------------------------------------------------------------------------
+  - id: dgb_mainnet_1
+    label: "DigiByte mainnet (remote #1)"
+    kind: digibyte-core
+    host: node1.example-dgb.org     # placeholder, replace in real setups
+    rpc_port: 8332
+    tls: true
+    priority: 50
+    timeout_ms: 4000
+    notes: >
+      Example remote DigiByte Core node. Replace with community / institutional
+      endpoints as needed.
 
-  planners:
-    # Nodes capable of planning state-vector frames.
-    - "https://enigmatic-planner.example.com/api"
+  # -------------------------------------------------------------------------
+  # 3. Secondary remote mainnet node
+  # -------------------------------------------------------------------------
+  - id: dgb_mainnet_2
+    label: "DigiByte mainnet (remote #2)"
+    kind: digibyte-core
+    host: node2.example-dgb.org     # placeholder
+    rpc_port: 8332
+    tls: true
+    priority: 40
+    timeout_ms: 4000
+    notes: >
+      Secondary remote endpoint for redundancy / failover.
 
-shield_nodes:
-  sentinel:
-    url: "https://sentinel.adamantine.example.com/v1"
-    timeout_seconds: 5
-
-  dqsn:
-    url: "https://dqsn.adamantine.example.com/v1"
-    timeout_seconds: 5
-
-  adn:
-    url: "https://adn.adamantine.example.com/v1"
-    timeout_seconds: 5
-
-  adaptive_core:
-    url: "https://adaptive-core.adamantine.example.com/v1"
-    timeout_seconds: 7
-
-defaults:
-  # Which networks clients should use by default.
-  digibyte_network: "mainnet"
-  auto_failover: true
-  max_retry_attempts: 3
-  retry_delay_seconds: 2
+  # -------------------------------------------------------------------------
+  # 4. Testnet node (for developers)
+  # -------------------------------------------------------------------------
+  - id: dgb_testnet
+    label: "DigiByte testnet"
+    kind: digibyte-core
+    host: testnet-node.example-dgb.org   # placeholder
+    rpc_port: 18332
+    tls: false
+    priority: 10
+    timeout_ms: 5000
+    notes: >
+      Example DigiByte testnet node used for development, QA, and integration
+      testing of Adamantine features.
