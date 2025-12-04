@@ -1,6 +1,5 @@
-# Adamantine Wallet — Architecture Overview
-
-Status: **draft v0.2**
+# Adamantine Wallet — Architecture Overview  
+Status: **draft v0.3**
 
 This document provides a high-level map of the Adamantine Wallet architecture, covering its modules, core systems, security layers, data flows, and platform implementations.
 
@@ -10,256 +9,242 @@ This document provides a high-level map of the Adamantine Wallet architecture, c
 
 Adamantine Wallet is designed to be:
 
-- **DigiByte‑native** – first‑class support for DGB, DigiAssets, and DigiDollar (DD).
-- **Security‑first** – deeply integrated with the 5‑layer DigiByte Quantum Shield + Adaptive Core.
-- **Multi‑platform** – consistent UX and safety guarantees across **Android**, **iOS**, and **Web**.
-- **Modular & auditable** – every major concern (keys, assets, messaging, analytics) lives in its own module with clear, documented boundaries.
-- **Future‑proof** – ready for Taproot, Enigmatic Layer‑0 communication, and post‑quantum upgrades.
+- **DigiByte-native** – first-class support for DGB, DigiAssets, and DigiDollar (DD).  
+- **Security-first** – deeply integrated with the 5-layer DigiByte Quantum Shield + Adaptive Core.  
+- **Multi-platform** – consistent UX and safety guarantees across **Android**, **iOS**, and **Web**.  
+- **Modular & auditable** – each concern (keys, assets, messaging, analytics) lives in its own module.  
+- **Future-proof** – ready for Taproot, Enigmatic Layer-0 communication, and post-quantum upgrades.
 
-This file is the “map of the city” – other docs go into street‑level detail.
+This file is the “map of the city.” All other docs provide street-level detail.
 
 ---
 
-## 2. High‑Level Layering
+## 2. High-Level Layering
 
-From top (user) to bottom (chain), Adamantine is organised into these layers:
+From top (user) to bottom (chain), Adamantine is structured into these layers:
 
-1. **Client Apps (UI layer)**
-   - `clients/android/`
-   - `clients/ios/`
-   - `clients/web/`
-   - Responsible for screens, navigation, and local device capabilities (biometrics, secure storage integration, notifications).
+### **1. Client Apps (UI Layer)**
+- `clients/android/`  
+- `clients/ios/`  
+- `clients/web/`  
 
-2. **Wallet Core**
-   - Key management, account abstraction, UTXO management, transaction building, and fee policies.
-   - Responsible for both **DGB** and **DigiAssets/DigiDollar** aware transaction flows.
-   - Exposes a stable API to all clients.
+Responsible for screens, navigation, secure storage integration, biometrics, and notifications.
 
-3. **Security & Guard Rails**
-   - **Guardian Wallet module** – local policy engine that turns shield risk scores into concrete user flows (warnings, extra confirmations, hard blocks).
-   - **Shield Bridge** – API glue that connects the wallet to the DigiByte Quantum Shield stack:
-     - Sentinel AI v2
-     - DigiByte Quantum Shield Network (DQSN)
-     - Autonomous Defense Node v2 (ADN v2)
-     - Quantum Adaptive Core (QAC)
-     - DigiByte Quantum Adaptive Core (DQAC – immune system).
-   - Supports both _online_ (live signals from the network) and _offline_ (last known profiles, local heuristics) modes.
+---
 
-4. **Assets & Value Layer**
-   - **DigiByte (DGB)** – base UTXO handling.
-   - **DigiAssets** – token & NFT functionality, creation, issuance, and transfer flows.
-   - **DigiDollar (DD)** – stable‑value asset with:
-     - mint / redeem flows,
-     - oracle & risk hooks,
-     - integration with shield telemetry for anomaly detection.
+### **2. Wallet Core**
+Handles:
 
-5. **Layer‑0 Messaging (Enigmatic)**
-   - Integration with **Enigmatic** as the DigiByte Layer‑0 communication stack.
-   - Uses DigiByte’s UTXO/fee/topology space as a signalling channel for:
-     - wallet‑to‑wallet intents,
-     - shield signals,
-     - DigiDollar governance and telemetry messages.
-   - Implemented as a dedicated **Enigmatic Chat & Messaging** module with clear APIs into Wallet Core.
+- account abstraction  
+- key management  
+- UTXO selection  
+- transaction building  
+- fee calculation  
+- balance state for DGB, DigiAssets, and DigiDollar  
 
-6. **Analytics & Telemetry**
-   - `modules/analytics-telemetry/`
-   - Collects **privacy‑respecting** metrics:
-     - shield risk events,
-     - anonymised error telemetry,
-     - performance and UX signals.
-   - All analytics are opt‑in and shaped by the `privacy-model.md`.
+This layer exposes a stable API shared across all clients.
 
-7. **Persistence & Configuration**
-   - Local device storage (secure hardware, encrypted databases, keychains).
-   - Remote configuration for:
-     - shield endpoints,
-     - oracle sources,
-     - feature flags and rollout stages.
+---
 
-8. **External Dependencies**
-   - DigiByte full nodes / light clients.
-   - Quantum Shield infrastructure (nodes, APIs, telemetry buses).
-   - Oracles, price feeds, and regulatory / compliance endpoints (where applicable).
+### **3. Security & Guard Rails**
+Includes:
+
+- **Guardian Wallet** – local policy engine that turns shield risk into user decisions (PIN, biometric, guardian approval, or hard blocks).
+- **Shield Bridge** – glue layer connecting the wallet to DigiByte’s 5-Layer Quantum Shield:  
+  - Sentinel AI v2  
+  - DQSN v2  
+  - ADN v2  
+  - QWG  
+  - Adaptive Core (DQAC)
+
+Supports both **online mode** (live signals) and **offline mode** (cached profiles).
+
+---
+
+### **4. Assets & Value Layer**
+- **DGB (base layer)** – standard UTXO asset.  
+- **DigiAssets** – tokens/NFTs; creation, issuance, transfers, burns.  
+- **DigiDollar (DD)** – mint/redeem logic, oracle connections, shield-aware risk checks.
+
+---
+
+### **5. Layer-0 Messaging (Enigmatic)**
+Wallet-to-wallet communication through UTXO state planes:
+
+- intents  
+- requests  
+- shield telemetry  
+- DD governance messages  
+
+Implemented under `modules/enigmatic-chat/`.
+
+---
+
+### **6. Analytics & Telemetry**
+Located in `modules/analytics-telemetry/`.
+
+Collects privacy-respecting, opt-in signals such as:
+
+- error patterns  
+- performance  
+- shield event summaries  
+
+No personal data or addresses.
+
+---
+
+### **7. Persistence & Configuration**
+- secure storage (OS keychain / keystore)  
+- encrypted local DB  
+- `config/` directory for shield endpoints, node lists, risk profiles, guardian rules  
+
+---
+
+### **8. External Dependencies**
+- DigiByte full nodes (local or remote)  
+- Digi-Mobile (Android full node)  
+- Oracle services  
+- Shield infrastructure endpoints  
 
 ---
 
 ## 3. Module Map
 
-At a coarse level, the repository is organised as:
+The repository is organised as:
 
-- **`.github/`** – CI, linting, docs checks, and issue templates.
-- **`clients/`**
-  - `android/` – Android‑specific README and UI screen maps.
-  - `ios/` – iOS‑specific README and UI screen maps.
-  - `web/` – Web client README and UI screen maps.
+- **`.github/`** – CI workflows, linting, docs validation.  
+- **`clients/`** – Android, iOS, and Web UI frontends.  
 - **`core/`**
-  - `data-models/` – contact, message, and wallet‑state models shared across clients.
-  - `guardian-wallet/` – configs, flows, and spec for the local safety engine.
-  - `pqc-containers/` – post‑quantum aware key and signing containers (design + migration plan).
-  - `qwg/` – Quantum Wallet Guard hooks (event hooks, validation rules, and spec).
-  - `risk-engine/` – scoring rules, inputs, and guardian thresholds.
-  - `shield-bridge/` – wallet‑side API surface for all shield layers (adaptive core, ADN, DQSN, QAC, Sentinel).
+  - `data-models/` – wallet state, contact, message models.  
+  - `guardian-wallet/` – configs, policy engine, evaluation logic.  
+  - `pqc-containers/` – future post-quantum key formats.  
+  - `qwg/` – Quantum Wallet Guard rules & hooks.  
+  - `risk-engine/` – scoring, thresholds, guardian integration.  
+  - `shield-bridge/` – interface to Shield layers (Sentinel, DQSN, ADN, QWG, Adaptive Core).  
+  - `digiassets/` – parsing, indexing, mint, transfer, and burn logic.  
 - **`modules/`**
-  - `analytics-telemetry/` – privacy model + analytics spec.
-  - `dd-minting/` – DigiDollar mint, redeem, and oracle integration specs.
-  - `enigmatic-chat/` – Enigmatic‑powered chat, message flow, and abuse controls.
-  - `digiassets/` – DigiAsset & NFT lifecycle flows (creation, issuance, transfer, burn) – **new module**.
-- **`docs/`**
-  - High‑level documents such as this architecture overview, the risk model, shield integration, DigiDollar overview, Enigmatic overview, roadmap, and vision.
-- **`tests/`**
-  - Scenario‑driven test descriptions for risk engine, DD minting, Enigmatic, shield bridge, and more.
-
-Each of these directories has its own README/spec file to explain internals.
+  - `dd-minting/` – DigiDollar mint/redeem flows.  
+  - `enigmatic-chat/` – Layer-0 messaging and dialect integration.  
+  - `analytics-telemetry/` – privacy model and analytics spec.  
+- **`docs/`** – all architecture, design, narrative specs.  
+- **`tests/`** – scenario-driven test plans for all modules.
 
 ---
 
 ## 4. Key Data Flows
 
-This section sketches how the major flows move through the architecture.
-
-### 4.1 Standard DGB Send
-
-1. User initiates a send from any client (Android/iOS/Web).
-2. Client calls **Wallet Core** to:
-   - select UTXOs,
-   - estimate fees,
-   - build a candidate transaction.
-3. Wallet Core calls **Shield Bridge** with a transaction draft.
-4. Shield Bridge:
-   - queries Sentinel / DQSN / ADN risk surfaces,
-   - assembles a **risk profile** for this action.
-5. Guardian Wallet applies user policy:
-   - low risk → proceed with normal biometric / PIN.
-   - elevated risk → show warnings, require extra confirmation.
-   - extreme risk → block, suggest remediation.
-6. If user approves, Wallet Core signs and broadcasts via DigiByte node / light client.
-7. Analytics‑Telemetry logs anonymised, policy‑safe events (if enabled).
-
-### 4.2 DigiAsset Creation & Transfer
-
-1. User opens **DigiAssets** module screen.
-2. Client calls Wallet Core + DigiAssets module:
-   - choose base UTXOs,
-   - define asset parameters (name, supply, metadata),
-   - construct asset‑aware transactions.
-3. Shield Bridge + Guardian evaluate for:
-   - unusual issuance patterns,
-   - spam / abuse heuristics,
-   - policy/compliance constraints (where applicable).
-4. Upon approval, transactions are signed and broadcast.
-5. Enigmatic can optionally embed **Layer‑0 messages** announcing the new asset to subscribed watchers.
-
-### 4.3 DigiDollar Mint / Redeem
-
-1. User initiates **mint** (DGB → DD) or **redeem** (DD → DGB).
-2. DigiDollar module orchestrates:
-   - on‑chain transaction building,
-   - oracle checks,
-   - shield risk checks,
-   - off‑chain service calls if required by the DD design.
-3. Risk Engine and Shield Bridge ensure that:
-   - oracle anomalies,
-   - sudden pattern shifts,
-   - regulatory rules are all respected.
-4. Successful flows update wallet balances; failures surface clear, user‑friendly errors.
-
-### 4.4 Enigmatic Messaging
-
-1. User sends a secure message / intent via **Enigmatic Chat**.
-2. Wallet Core encodes the intent as an **Enigmatic dialect symbol**.
-3. Enigmatic stack plans UTXOs, state vectors, and transaction shapes.
-4. Shield Bridge and Guardian confirm that the pattern is:
-   - policy‑compliant,
-   - economically plausible,
-   - within detectability / deniability bounds.
-5. Transaction is signed/broadcast; receivers decode via the same dialect.
+### **4.1 DGB Send**
+1. Client initiates send  
+2. Wallet Core selects UTXOs and drafts TX  
+3. Shield Bridge computes risk  
+4. Guardian Wallet applies policies  
+5. If allowed → sign & broadcast  
+6. Optional telemetry logs anonymised events  
 
 ---
 
-## 5. Security & Trust Model (High Level)
-
-- **Device security** – leverage secure enclaves, keychains, and OS‑level hardening.
-- **Shield‑aligned** – every critical flow can consult:
-  - Sentinel AI telemetry,
-  - DQSN confirmation patterns,
-  - ADN lockdown signals,
-  - QAC / DQAC adaptive responses.
-- **Policy‑driven UX** – Guardian Wallet is the “face” of all this to the user:
-  - configuration profiles (conservative / balanced / aggressive),
-  - per‑asset and per‑amount thresholds,
-  - travel / jurisdiction modes for future releases.
-- **Privacy‑aware analytics** – analytics‑telemetry is explicitly opt‑in and documented in `privacy-model.md`.
+### **4.2 DigiAsset lifecycle**
+1. User initiates creation/issue/transfer  
+2. DigiAssets engine builds transaction pattern  
+3. Shield Bridge + Guardian validate safety  
+4. Enigmatic optionally embeds L0 announcements  
+5. Wallet signs + broadcasts  
 
 ---
 
-## 6. Deployment & Platform Notes
+### **4.3 DigiDollar mint/redeem**
+1. User selects mint/redeem  
+2. DD engine orchestrates oracle + shield checks  
+3. Guardian policies apply  
+4. Safe → sign; unsafe → block / require guardian  
+5. Balances update accordingly  
 
-- **Android / iOS**
-  - Native shells with shared business logic where possible.
-  - Platform‑specific secure storage and biometric handling.
-  - Offline‑capable for basic operations with cached shield profiles.
+---
 
-- **Web**
-  - Browser‑based UI with optional integration into existing DigiByte web wallets or extensions.
-  - Hardened against XSS / CSRF via standard best practices.
+### **4.4 Enigmatic Messaging**
+1. User creates message  
+2. Enigmatic encodes dialect pattern  
+3. Shield evaluates detectability & plausibility  
+4. Wallet signs  
+5. Receiver decodes via same dialect  
 
-- **Backend / Services**
-  - Adamantine is primarily **non‑custodial**.
-  - Optional companion services:
-    - notification relays,
-    - analytics aggregators,
-    - shield proxy endpoints for resource‑constrained clients.
+---
+
+## 5. Security & Trust Model
+
+- **Device Trust** – keychains, secure enclave, encrypted DB.  
+- **Shield Integration** – every critical flow may consult Sentinel, DQSN, ADN, QWG, and Adaptive Core.  
+- **Guardian Policies** – UX is shaped by security posture (PIN, biometrics, guardian approval).  
+- **Opt-In Telemetry** – no tracking, no identifiers, fully transparent.
+
+---
+
+## 6. Platform Notes
+
+### **Android & iOS**
+- native biometric APIs  
+- secure storage primitives  
+- offline-capable with cached shield profiles  
+
+### **Web**
+- hardened UX  
+- non-custodial  
+- optional integration with browser extensions  
 
 ---
 
 ## 7. Roadmap Hooks
 
-This architecture is intentionally modular so that future work can plug in cleanly:
-
-- Full implementation of **post‑quantum signing** via `pqc-containers/`.
-- Rich **DigiAsset gallery and marketplace views**.
-- More sophisticated **guardian policies** (per‑contact trust levels, travel modes).
-- Expanded **Enigmatic dialects** for governance, shield telemetry, and community channels.
-- Advanced **multi‑sig / social recovery** schemes aligned with PQC containers and shield policies.
+- PQC signing container implementation  
+- DigiAsset gallery + marketplace  
+- advanced guardian schemes (travel mode, per-contact trust)  
+- more Enigmatic dialects  
+- expanded shield heuristics  
+- multi-sig and social recovery  
 
 ---
 
-*This file is a living document. As the Adamantine Wallet moves from design to implementation, this overview will be kept in sync with the actual repository structure and deployed features.*
+## 8. Digi-Mobile Integration (Android)
 
-📱 Digi-Mobile Integration (Android)
+Adamantine can operate with multiple DigiByte node backends.  
+On Android, the preferred backend is a **local Digi-Mobile node** when available.
 
-Adamantine is designed to operate with multiple DigiByte node backends.
-On Android, the wallet prefers a local full node when available.
-This is achieved through integration with Digi-Mobile, a pruned and mobile-friendly build of DigiByte Core.
+### **How it works**
 
-How it works
-	1.	Digi-Mobile runs a local DigiByte Core daemon on Android.
-	2.	The daemon exposes the standard JSON-RPC interface on 127.0.0.1:<port>.
-	3.	Adamantine’s node client detects the node automatically and treats it as a first-class backend:
-	•	UTXO listing
-	•	fee estimation
-	•	mempool / chain-tip queries
-	•	transaction broadcasting
+1. Digi-Mobile runs a pruned DigiByte Core daemon on the device  
+2. Exposes JSON-RPC on `127.0.0.1:<port>`  
+3. Adamantine auto-detects the node and uses it for:
+   - UTXO set queries  
+   - fee estimation  
+   - mempool checks  
+   - broadcasting  
 
-If Digi-Mobile is reachable, Adamantine switches into local full-node mode:
+If available, Adamantine switches into **local full-node mode**:
+
+```
 Android Device
 ┌────────────────────────────┐
-│  Digi-Mobile (local node)  │  ← Full DigiByte Core (pruned)
+│   Digi-Mobile (local node) │  ← Pruned DigiByte Core
 └───────────────┬────────────┘
                 │ JSON-RPC
 ┌───────────────▼────────────┐
-│    Adamantine Wallet        │
+│     Adamantine Wallet       │
 │  (Guardian + Shield Stack)  │
 └─────────────────────────────┘
-If it is not reachable, Adamantine falls back to remote nodes declared in
-config/example-nodes.yml.
+```
 
-Why Digi-Mobile matters
+If unreachable, Adamantine falls back to the remote nodes defined in  
+`config/example-nodes.yml`.
 
-Running a full node directly on the device provides:
-	•	full trustless validation
-	•	strong privacy (no external RPC leaks)
-	•	resilience against network censorship
-	•	perfect alignment with the Guardian and Shield layers
+### **Why it matters**
 
-With Digi-Mobile + Adamantine, Android becomes a self-contained DigiByte security environment.
+- trustless validation  
+- no RPC leakage → maximum privacy  
+- protected against censorship/outages  
+- perfectly aligned with Guardian + Shield security model  
+
+With Digi-Mobile + Adamantine, Android becomes a **self-contained DigiByte security environment**.
+
+---
+
+*This document is updated as Adamantine evolves from design to implementation.*  
