@@ -1,328 +1,255 @@
-# DGB Guardian Wallet Layer — Flows (flows.md)
+# 🛡 Guardian Wallet Flows
 
-Status: **draft v0.1 – internal skeleton**
+**Module:** `core/guardian-wallet/`  
+**Scope:** How and *when* Guardian is invoked by Adamantine Wallet flows.
 
-This document describes the **main runtime flows** of the DGB Guardian
-Wallet layer inside the DigiByte Adamantine Wallet.
-
-It complements `spec.md` by showing **how** Guardian is called from the
-UI and **how** it interacts with Shield Bridge, Risk Engine and TX
-Builder for common actions.
-
-The goal is to keep flows:
-
-- deterministic
-- auditable
-- easy to test with fixtures and replay logs.
+This document explains how wallet actions (send, DigiAssets, DigiDollar, Enigmatic)
+call into the Guardian engine, and what the possible outcomes are from a user
+experience point of view.
 
 ---
 
-## 1. Common Flow Pattern
+## 1. Components in the Flow
 
-All guarded actions follow the same high-level pattern:
+Guardian is not called directly from UI screens. Instead, the flow is:
 
-```text
-[ UI ] → build ActionRequest
-      → Guardian.evaluate(request)
-      → Guardian returns GuardianVerdict
-      → UI interprets verdict
-      → (optional challenge)
-      → TX Builder / Module executes or aborts
+1. **Wallet Core / Feature Engine**
+   - DGB send logic
+   - DigiAssets engine
+   - DigiDollar (DD) engine
+   - Enigmatic messaging layer
+
+2. **GuardianAdapter (`guardian_adapter.py`)**
+   - Maps a high-level operation (send, mint, redeem, asset op, Enigmatic flow)
+     into a `ActionContext` + `RuleAction` for the engine.
+   - Returns a `GuardianDecision` object.
+
+3. **GuardianEngine (`engine.py`)**
+   - Applies rules from configuration.
+   - Outputs `GuardianVerdict` and optional `ApprovalRequest`.
+
+4. **Guardian UI Payloads (`guardian_ui_payloads.py`)**
+   - Convert verdict + approval request + config maps into a simple,
+     serialisable `GuardianUIPayload` for Android / iOS / Web.
+
+5. **Client UI (Android / iOS / Web)**
+   - Renders the payload:
+     - ALLOW → proceed with action.
+     - REQUIRE_APPROVAL → show guardians, required approvals, progress.
+     - BLOCK → show a clear message and stop the action.
+
+---
+
+## 2. DGB Send Flow
+
+### 2.1 Trigger
+
+User taps **Send** and fills in:
+
+- amount
+- destination address
+- optional memo
+
+Wallet core builds a candidate transaction and a value representation for
+Guardian rules (e.g. DGB units or minor units).
+
+### 2.2 Call Guardian
+
+```python
+from core.guardian_wallet.guardian_adapter import GuardianAdapter
+from core.guardian_wallet.guardian_ui_payloads import build_ui_payload
+
+adapter = GuardianAdapter(engine)  # engine from GuardianConfig
+decision = adapter.evaluate_send_dgb(
+    wallet_id="w1",
+    account_id="a1",
+    value_dgb=amount_dgb,
+    description="User initiated DGB send",
+    meta={"destination": dest_address},
+)
+
+ui_payload = build_ui_payload(
+    verdict=decision.verdict,
+    approval_request=decision.approval_request,
+    rules=guardian_rules,
+    guardians=guardian_registry,
+    meta={"flow": "send_dgb"},
+)
 ```
 
-The only difference between actions is:
+### 2.3 Outcomes
 
-- which fields are populated in `ActionRequest.extras`
-- which modules consume the verdict (TX builder, DD engine, Enigmatic).
+- **ALLOW**
+  - UI shows standard confirmation (PIN/biometrics) and broadcasts TX.
+- **REQUIRE_APPROVAL**
+  - UI shows:
+    - which guardians are needed,
+    - how many approvals are required,
+    - current status (pending / approved / rejected).
+  - Wallet waits for enough approvals before signing & broadcasting.
+- **BLOCK**
+  - UI shows a clear message why the action is blocked (e.g. policy, limit).
+  - No signing, no broadcast.
 
 ---
 
-## 2. Send DGB Flow
+## 3. DigiAssets Flow
 
-### 2.1 Preconditions
+### 3.1 Operations
 
-- User has selected:
-  - `from` account
-  - `to` address or contact
-  - amount in DGB (sats)
-- Wallet has:
-  - fresh balance / UTXO view
-  - up-to-date ShieldIntegrationState (or at least last-known status)
+DigiAssets use the same Guardian infrastructure but with dedicated
+RuleAction values when available:
 
-### 2.2 Steps
+- **Mint** – create new asset units.
+- **Transfer** – send asset units to another address.
+- **Burn** – destroy asset units.
 
-```text
-1. UI collects input:
-   - from_account_id
-   - to_address / to_contact
-   - amount_sats
+### 3.2 Call Guardian
 
-2. UI snapshots environment:
-   - DeviceSecuritySnapshot
-   - NetworkStateSnapshot
+```python
+decision = adapter.evaluate_digiasset_op(
+    wallet_id="w1",
+    account_id="assets_account",
+    value_units=total_units,       # e.g. smallest asset units
+    op_kind="mint",                # "mint" | "transfer" | "burn"
+    description="Mint new DigiAsset",
+    meta={"asset_symbol": symbol},
+)
 
-3. UI builds ActionRequest:
-
-   kind          = "send-dgb"
-   profile_id    = currentProfile.id
-   account_id    = from_account_id
-   amount_sats   = X
-   from_address  = (optional – if chosen)
-   to_address    = resolved DGB address
-   to_contact_id = (optional – if a contact was used)
-
-4. UI calls:
-
-   verdict = Guardian.evaluate(actionRequest)
-
-5. Guardian:
-   a) Reads Risk Profile for this account.
-   b) Queries Shield Bridge for:
-      - sentinel summary
-      - dqsn node health
-      - adn node status
-      - qac confirmation pattern (if relevant)
-      - adaptive core hints
-   c) Runs local heuristics:
-      - contact trust level / risk flags
-      - new vs known address
-      - abnormal amount (relative to history)
-      - device security posture
-   d) Aggregates to RiskLevel.
-   e) Maps RiskLevel → GuardianAction via profile.
-   f) Returns GuardianVerdict.
-
-6. UI interprets verdict:
-
-   if action = "allow":
-       proceed → TX Builder
-   if action in {"require-local-confirmation", "require-biometric",
-                 "require-passphrase"}:
-       run challenge flow, then (if passed) proceed → TX Builder
-   if action = "delay-and-retry":
-       show message, schedule retry
-   if action = "block-and-alert":
-       show blocking message, abort
-
-7. TX Builder constructs raw transaction, signs and broadcasts,
-   or aborts if Guardian blocked.
-
-8. Guardian logs outcome (including whether user overrode or cancelled)
-   to feed Adaptive Core.
+ui_payload = build_ui_payload(
+    verdict=decision.verdict,
+    approval_request=decision.approval_request,
+    rules=guardian_rules,
+    guardians=guardian_registry,
+    meta={"flow": "digiasset_" + op_kind, "asset_symbol": symbol},
+)
 ```
 
+Outcome handling is identical to DGB sends:
+ALLOW → proceed, REQUIRE_APPROVAL → wait for guardians, BLOCK → stop.
+
 ---
 
-## 3. Mint DD Flow
+## 4. DigiDollar (DD) Mint / Redeem
 
-Minting DD is more sensitive than a normal send because it:
+### 4.1 Overview
 
-- **locks backing UTXOs** for DD issuance,
-- may involve oracle checks,
-- may be a target for sophisticated attacks.
+The DigiDollar engine (`modules/dd_minting/`) already performs:
 
-### 3.1 Preconditions
+- oracle pricing,
+- risk / guardian integration,
+- Tx planning.
 
-- User has chosen:
-  - `from` account for backing DGB
-  - target DD amount (or DGB to convert)
-- Wallet knows:
-  - backing UTXOs candidate set
-  - current oracle state (if used)
+Guardian sits in front of **mint** and **redeem** actions as an extra
+policy layer.
 
-### 3.2 Steps
+### 4.2 Mint Flow (DGB → DD)
 
-```text
-1. UI collects DD mint inputs:
-   - backing_account_id
-   - desired_dd_amount or backing_sats
-   - chosen settlement address (if applicable)
+1. User requests a quote.
+2. Wallet shows how much DD would be minted.
+3. When user confirms, wallet calls Guardian via the adapter:
 
-2. UI snapshots environment:
-   - DeviceSecuritySnapshot
-   - NetworkStateSnapshot
-
-3. UI builds ActionRequest:
-
-   kind        = "mint-dd"
-   profile_id  = currentProfile.id
-   account_id  = backing_account_id
-   amount_dd   = desired_dd_amount (if known)
-   amount_sats = implied or explicit backing value
-
-   extras = {
-     "mint_mode": "onchain" | "other",
-     "oracle_snapshot": { ... }   // optional summary
-   }
-
-4. UI calls Guardian.evaluate(request).
-
-5. Guardian:
-   - pulls Risk Profile
-   - queries Shield Bridge
-   - checks for:
-     - high mempool / reorg risk
-     - unusual backing pattern
-     - suspicious node health
-     - recent shield alerts affecting DD
-   - aggregates RiskLevel
-   - maps to GuardianAction
-   - returns GuardianVerdict.
-
-6. UI interprets verdict:
-   - If `allow` or `allow-with-challenge` → proceed to DD engine.
-   - If `block-and-alert` → show reason (e.g. "Network unstable for mint").
-
-7. DD engine:
-   - selects backing UTXOs
-   - constructs and submits mint transaction(s)
-   - updates DigiDollarState.
-
-8. Guardian logs event for Adaptive Core.
+```python
+decision = adapter.evaluate_mint_dd(
+    wallet_id="w1",
+    account_id="a1",
+    dgb_value_in=quote.dgb_side.dgb,
+    description="Mint DigiDollar (DD)",
+    meta={"flow": "dd_mint"},
+)
 ```
 
+4. `build_ui_payload(...)` converts the result to UI form.
+
+- If **ALLOW** → DD engine builds a Tx plan, wallet signs + broadcasts.
+- If **REQUIRE_APPROVAL** → guardians must approve the mint.
+- If **BLOCK** → no mint; UI shows why.
+
+### 4.3 Redeem Flow (DD → DGB)
+
+Identical pattern, but using `evaluate_redeem_dd(...)` and a `flow` meta of
+`"dd_redeem"`.
+
 ---
 
-## 4. Redeem DD Flow
+## 5. Enigmatic Messaging
 
-Redeeming DD unlocks backing UTXOs and may be abused to drain reserves
-if compromised. Guardian must treat anomalous redeems as high risk.
+Certain Enigmatic Layer-0 operations may also be guarded, especially
+if they:
+- move value,
+- represent governance actions,
+- or perform sensitive signalling on-chain.
 
-Flow is analogous to Mint DD:
+### 5.1 Call Guardian
 
-```text
-1. User selects a DD position or amount to redeem.
-2. UI builds ActionRequest with kind = "redeem-dd".
-3. Guardian evaluates as above.
-4. Verdict decides whether DD engine proceeds.
-5. TX Builder + DD engine construct redeem TXs.
-6. Guardian logs for Adaptive Core.
+```python
+decision = adapter.evaluate_enigmatic_message(
+    wallet_id="w1",
+    account_id="msg_account",
+    value_dgb=estimated_cost_dgb,
+    description="Enigmatic Layer-0 message",
+    meta={"flow": "enigmatic_message"},
+)
+
+ui_payload = build_ui_payload(
+    verdict=decision.verdict,
+    approval_request=decision.approval_request,
+    rules=guardian_rules,
+    guardians=guardian_registry,
+    meta={"flow": "enigmatic_message"},
+)
 ```
 
-Additional heuristics:
-
-- large redeem after a long idle period → higher risk
-- redeem to a new unseen address → higher risk
-- multiple rapid redeems from same device → suspicious.
-
-These heuristics belong to the Risk Engine but are orchestrated here.
+Wallet then follows the standard ALLOW / REQUIRE_APPROVAL / BLOCK pattern.
 
 ---
 
-## 5. Enigmatic Payment Request Flow
+## 6. Guardian Approvals Lifecycle
 
-Enigmatic itself handles messaging, but Guardian protects actions that
-**move value** or **trigger sensitive operations** based on messages.
+### 6.1 When REQUIRE_APPROVAL is returned
 
-Example: A contact sends a payment request via Enigmatic.
+- The wallet stores the `ApprovalRequest` (id, rule, guardians, status).
+- UI displays an approval screen, including:
+  - summary of the action,
+  - list of guardians,
+  - current approval status.
 
-```text
-1. Enigmatic module receives a signed payment request message.
-2. Module parses, verifies signature and constructs a proposed action:
+### 6.2 Guardians Respond
 
-   kind        = "send-dgb" (or "mint-dd", etc.)
-   from_account_id = ...
-   to_contact_id   = ...
-   amount_sats     = ...
+As guardians approve or reject (via whatever channel is implemented), the
+wallet calls:
 
-3. Instead of executing directly, module passes this to Guardian
-   as an ActionRequest (same as manual send, just with origin = "enigmatic").
-
-4. Guardian evaluates using:
-   - contact trust level
-   - past history with this contact
-   - shield signals
-   - device security
-   - amount and novelty of address.
-
-5. UI shows:
-   - the request details
-   - Guardian’s warnings or approvals.
-
-6. User can accept / reject, but execution still flows through Guardian
-   as in the standard send case.
+```python
+engine.apply_decision(
+    approval_request,
+    guardian_id="g1",
+    status=ApprovalStatus.APPROVED,  # or REJECTED
+    reason="optional note",
+)
 ```
 
-This ensures Enigmatic cannot bypass Guardian policy.
+The `ApprovalRequest` object updates its internal tallies and status.
+
+### 6.3 Action Completion
+
+- If the final status becomes **APPROVED** → wallet proceeds with signing
+  and broadcasting.
+- If **REJECTED** → wallet permanently blocks the action and updates UI.
+- If still **PENDING** → wallet keeps waiting or times out, depending on
+  UX policy.
 
 ---
 
-## 6. Settings Change Flow
+## 7. Notes & Future Extensions
 
-Certain settings changes are sensitive:
+- Guardian flows can be extended with **risk scores** from Sentinel / DQSN /
+  ADN / Adaptive Core by embedding them into `meta` or additional context.
+- Per-contact trust levels and dynamic travel / jurisdiction modes can
+  be plugged into the same adapter and UI payloads without changing
+  calling code.
+- For light clients, approvals can be synced over Enigmatic or other
+  off-chain messaging channels.
 
-- switching to a custom node
-- disabling Guardian
-- lowering risk profile
-- enabling experimental shield feeds
-
-For such actions:
-
-```text
-1. UI constructs ActionRequest with kind = "settings-change".
-2. Includes details in `extras` (e.g. "disable_guardian": true).
-3. Guardian evaluates:
-   - may require biometric / passphrase
-   - may block entirely if policy forbids.
-4. If verdict allows, settings module applies the change.
-```
-
-This prevents malware / remote control from silently weakening the wallet.
-
----
-
-## 7. Degraded / Offline Mode
-
-When Shield endpoints are partially or fully unreachable:
-
-- Shield Bridge reports `status = "degraded"` or `"offline"`.
-- Risk Engine marks certain signals as stale or unavailable.
-- Guardian MUST degrade **safely**:
-
-Examples:
-
-```text
-- If shield is offline but device is healthy and contact is trusted:
-    allow small sends with local heuristics, block large ones.
-
-- If shield is degraded and network appears unstable:
-    tighten policy for all sends (e.g. treat as at least "medium" risk).
-```
-
-These degradation strategies will be defined in more detail in
-`core/risk-engine/scoring-rules.md`, but flows here must assume that
-**some data is sometimes missing** and still behave safely.
-
----
-
-## 8. Logging & Telemetry Hooks
-
-For every evaluated action Guardian SHOULD:
-
-- create a **decision log entry** with:
-  - action kind
-  - risk level
-  - guardian action
-  - shield status summary
-  - anonymised context hashes
-- expose this to:
-  - Adaptive Core (for learning)
-  - local analytics (if enabled and privacy-approved).
-
-Logs MUST:
-
-- avoid storing raw addresses where possible
-- avoid storing exact amounts unless user opts in
-- be protected by the same encryption model as other sensitive metadata.
-
----
-
-## 9. Testability
-
-These flows are designed to be:
-
-- reproducible via JSON fixtures (ActionRequest → GuardianVerdict),
-- testable without network access (using mocked Shield Bridge),
-- extensible as new modules (e.g. additional asset types) appear.
-
-Dedicated test vectors will be documented in `tests/risk-engine-tests.md`.
+Guardian flows are intentionally **modular** so Adamantine can evolve from
+simple threshold rules into a rich, shield-driven policy engine without
+breaking existing wallet logic.
