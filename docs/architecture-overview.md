@@ -225,3 +225,41 @@ This architecture is intentionally modular so that future work can plug in clean
 ---
 
 *This file is a living document. As the Adamantine Wallet moves from design to implementation, this overview will be kept in sync with the actual repository structure and deployed features.*
+
+📱 Digi-Mobile Integration (Android)
+
+Adamantine is designed to operate with multiple DigiByte node backends.
+On Android, the wallet prefers a local full node when available.
+This is achieved through integration with Digi-Mobile, a pruned and mobile-friendly build of DigiByte Core.
+
+How it works
+	1.	Digi-Mobile runs a local DigiByte Core daemon on Android.
+	2.	The daemon exposes the standard JSON-RPC interface on 127.0.0.1:<port>.
+	3.	Adamantine’s node client detects the node automatically and treats it as a first-class backend:
+	•	UTXO listing
+	•	fee estimation
+	•	mempool / chain-tip queries
+	•	transaction broadcasting
+
+If Digi-Mobile is reachable, Adamantine switches into local full-node mode:
+Android Device
+┌────────────────────────────┐
+│  Digi-Mobile (local node)  │  ← Full DigiByte Core (pruned)
+└───────────────┬────────────┘
+                │ JSON-RPC
+┌───────────────▼────────────┐
+│    Adamantine Wallet        │
+│  (Guardian + Shield Stack)  │
+└─────────────────────────────┘
+If it is not reachable, Adamantine falls back to remote nodes declared in
+config/example-nodes.yml.
+
+Why Digi-Mobile matters
+
+Running a full node directly on the device provides:
+	•	full trustless validation
+	•	strong privacy (no external RPC leaks)
+	•	resilience against network censorship
+	•	perfect alignment with the Guardian and Shield layers
+
+With Digi-Mobile + Adamantine, Android becomes a self-contained DigiByte security environment.
