@@ -1,24 +1,31 @@
 """
-Pytest configuration – ensure the project root is on sys.path.
-
-This makes imports like `from core.wallet_service import WalletService`
-work reliably in all CI jobs (Android / iOS / Web), regardless of the
-current working directory.
+Robust pytest config that ensures the `core/` package is importable
+in all CI environments (Android / iOS / Web).
 """
 
 from __future__ import annotations
-
 import sys
 from pathlib import Path
 
 
-def _ensure_project_root_on_path() -> None:
-    # tests/  -> project root is one level up
-    root = Path(__file__).resolve().parents[1]
+def _find_project_root(marker_folder: str = "core") -> Path:
+    """
+    Walk upward from the current conftest file until we find a directory
+    containing the target marker folder (`core`). This works even if
+    CI runs tests from nested working directories.
+    """
+    current = Path(__file__).resolve().parent
 
-    root_str = str(root)
-    if root_str not in sys.path:
-        sys.path.insert(0, root_str)
+    for _ in range(10):  # walk up max 10 levels for safety
+        if (current / marker_folder).exists():
+            return current
+        current = current.parent
+
+    raise RuntimeError("Could not locate project root containing /core directory")
 
 
-_ensure_project_root_on_path()
+# Ensure the project root is added to sys.path
+project_root = _find_project_root()
+root_str = str(project_root)
+if root_str not in sys.path:
+    sys.path.insert(0, root_str)
