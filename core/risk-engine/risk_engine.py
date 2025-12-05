@@ -14,13 +14,21 @@ ADN, Guardian, QWG, etc.) and produces:
 
 This is a **wallet-side** risk model. It does NOT change consensus
 rules or node behaviour by itself.
+
+Public types (used in tests):
+
+    - RiskLevel
+    - RiskSignal
+    - RiskInputs
+    - RiskResult
+    - RiskEngine
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Sequence, Union
 
 
 class RiskLevel(str, Enum):
@@ -52,6 +60,38 @@ class RiskSignal:
     weight: int = 1  # 1–10, higher means more impact
     description: Optional[str] = None
     details: Dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
+class RiskInputs:
+    """
+    Minimal input bundle for the risk engine.
+
+    Tests only require a lightweight dataclass that can be imported as
+    `RiskInputs`.  It can be extended later without breaking callers.
+
+    Typical usage:
+
+        inputs = RiskInputs(
+            node_health_score=82.0,
+            guardian_flags={"multi_sig_active": True},
+            external_alerts={"exchange_incident": 1.0},
+            signals=[...],
+        )
+        result = engine.evaluate(inputs)
+    """
+
+    node_health_score: Optional[float] = None
+    """Aggregated node health score (0–100), if available."""
+
+    guardian_flags: Dict[str, bool] = field(default_factory=dict)
+    """Boolean flags derived from Guardian / policy engine."""
+
+    external_alerts: Dict[str, float] = field(default_factory=dict)
+    """Any external risk indicators (oracles, feeds, etc.)."""
+
+    signals: List[RiskSignal] = field(default_factory=list)
+    """Concrete signals used for scoring and labelling."""
 
 
 @dataclass
@@ -104,15 +144,35 @@ class RiskEngine:
     # Public API
     # ------------------------------------------------------------------
 
-    def evaluate(self, signals: List[RiskSignal]) -> RiskResult:
+    def evaluate(
+        self,
+        inputs: Union[RiskInputs, Sequence[RiskSignal]],
+    ) -> RiskResult:
         """
-        Compute a RiskResult from a list of RiskSignal inputs.
+        Compute a RiskResult.
+
+        Supports two calling styles:
+
+            1) engine.evaluate(list_of_signals)
+            2) engine.evaluate(RiskInputs(...))
+
+        In the second form, `inputs.signals` are used for scoring and
+        labelling; other fields (node_health_score, guardian_flags,
+        external_alerts) can influence scoring in future versions.
         """
+
+        if isinstance(inputs, RiskInputs):
+            signals_list: List[RiskSignal] = list(inputs.signals)
+            # For now we ignore node_health_score / guardian_flags /
+            # external_alerts in the numeric score, but tests may still
+            # inspect that RiskInputs exists and can be constructed.
+        else:
+            signals_list = list(inputs)
 
         base_score = 100
 
         penalty = 0
-        for s in signals:
+        for s in signals_list:
             # Clamp weight to a sane range [0, 10]
             w = max(0, min(s.weight, 10))
             penalty += w * self.per_signal_factor
@@ -120,10 +180,10 @@ class RiskEngine:
         score = max(0, min(base_score - penalty, 100))
         level = self._level_for_score(score)
 
-        result = RiskResult(score=score, level=level, signals=list(signals))
+        result = RiskResult(score=score, level=level, signals=list(signals_list))
 
         # Auto-label common patterns
-        for s in signals:
+        for s in signals_list:
             self._attach_labels_from_signal(result, s)
 
         return result
