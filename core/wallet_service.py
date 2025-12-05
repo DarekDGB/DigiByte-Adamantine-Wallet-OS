@@ -24,7 +24,10 @@ from dataclasses import dataclass, asdict
 from enum import Enum, auto
 from typing import Any, Dict, Optional
 
-from core.guardian_wallet.adapter import GuardianAdapter, GuardianDecision
+from core.guardian_wallet.guardian_adapter import (
+    GuardianAdapter,
+    GuardianDecision,
+)
 from modules.dd_minting.engine import DDMintingEngine
 
 
