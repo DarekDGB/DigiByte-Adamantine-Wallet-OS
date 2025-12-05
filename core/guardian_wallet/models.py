@@ -111,6 +111,18 @@ class ApprovalStatus(str, Enum):
     CANCELLED = "CANCELLED"
 
 
+class GuardianVerdict(str, Enum):
+    """
+    High-level verdict for Guardian decisions.
+
+    Tests and GuardianDecision use this enum.
+    """
+
+    ALLOW = "ALLOW"
+    REQUIRE_APPROVAL = "REQUIRE_APPROVAL"
+    BLOCK = "BLOCK"
+
+
 @dataclass
 class ApprovalDecision:
     """A single guardian's response to an approval request."""
