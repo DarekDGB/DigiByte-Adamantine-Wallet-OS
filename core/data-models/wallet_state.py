@@ -1,18 +1,14 @@
 """
-DigiByte Adamantine Wallet — Core Wallet State Models
------------------------------------------------------
+WalletState data models.
 
-This module provides a small, language-agnostic *reference model* of
-the Adamantine Wallet state. It is **not** a full implementation and
-does not talk to DigiByte nodes or sign transactions. Instead, it
-defines clean data structures that other languages (Kotlin, Swift,
-TypeScript, Rust) can mirror.
+These models describe the in-memory view of:
 
-You can safely evolve this file as the `core/data-models/*.md` specs
-mature.
+- wallets
+- accounts
+- balances for DGB, DigiAssets, and DigiDollar (DD)
 
-Suggested repo path:
-    core/data-models/wallet_state.py
+They are deliberately framework-agnostic so the same structures can be
+used on Android / iOS / Web and in tests.
 """
 
 from __future__ import annotations
@@ -20,175 +16,226 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Dict, List, Optional
+from datetime import datetime, timezone
+
+
+# ---------------------------------------------------------------------------
+# Enums
+# ---------------------------------------------------------------------------
+
+
+class Network(str, Enum):
+    MAINNET = "mainnet"
+    TESTNET = "testnet"
+    REGTEST = "regtest"
 
 
 class AssetKind(str, Enum):
-    """Top‑level asset categories supported by the wallet.
-
-    - DGB        : native DigiByte coin (UTXO)
-    - DD         : DigiDollar synthetic unit (position-backed)
-    - DIGIASSET  : DigiAssets issued on top of DGB
-    """
-
     DGB = "DGB"
-    DD = "DD"
-    DIGIASSET = "DIGIASSET"
+    DIGIASSET = "DGA"
+    DIGIDOLLAR = "DD"
+
+
+# ---------------------------------------------------------------------------
+# Balance & asset views
+# ---------------------------------------------------------------------------
 
 
 @dataclass
-class Balance:
-    """Represents the balance of a single asset within an account.
+class AssetBalance:
+    """
+    Generic balance view for any asset type.
 
-    Amounts are tracked in the *smallest unit*:
-    - DGB  : satoshis (1 DGB = 100_000_000 units)
-    - DD   : cents of 1.00 DD (or smallest DD unit you decide)
-    - DigiAsset : protocol-defined base unit
+    All amounts are stored as integers in "minor units":
+      - DGB: satoshis-like minor units
+      - DD: minimal indivisible DD units
+      - DigiAssets: smallest indivisible units for that asset
     """
 
-    asset_id: str
+    asset_id: str               # e.g. "DGB", "DD", or DigiAsset ID
     kind: AssetKind
     confirmed: int = 0
-    unconfirmed: int = 0
+    pending: int = 0
+    locked: int = 0             # reserved for pending tx, staking, etc.
 
     @property
     def total(self) -> int:
-        """Total spendable + pending units for this asset."""
-        return self.confirmed + self.unconfirmed
+        """Total balance including pending and locked."""
+        return self.confirmed + self.pending + self.locked
+
+    def apply_delta(self, confirmed_delta: int = 0, pending_delta: int = 0, locked_delta: int = 0) -> None:
+        """
+        Adjust balance by deltas. Used when building / confirming txs.
+        """
+        self.confirmed += confirmed_delta
+        self.pending += pending_delta
+        self.locked += locked_delta
+
+
+# ---------------------------------------------------------------------------
+# Account & wallet models
+# ---------------------------------------------------------------------------
 
 
 @dataclass
-class RiskSummary:
-    """Lightweight risk/health summary for an account or wallet.
-
-    This mirrors what the Adamantine shield surface will show:
-    - score: 0–100 (higher is safer)
-    - labels: free‑form tags like ["reorg_warning", "pqc_needed"]
+class AccountState:
     """
+    Single logical account within a wallet.
 
-    score: int = 100
-    labels: List[str] = field(default_factory=list)
-
-    def add_label(self, label: str) -> None:
-        if label not in self.labels:
-            self.labels.append(label)
-
-    def clamp_score(self) -> None:
-        """Keep score in the 0–100 range."""
-        if self.score < 0:
-            self.score = 0
-        elif self.score > 100:
-            self.score = 100
-
-
-@dataclass
-class Account:
-    """Logical Adamantine account.
-
-    One account can have many underlying DGB addresses (for privacy)
-    but appears as a single row in the UI.
+    Examples:
+      - "Main DGB account"
+      - "Savings"
+      - "Cold storage"
     """
 
     id: str
     label: str
     addresses: List[str] = field(default_factory=list)
-    balances: Dict[str, Balance] = field(default_factory=dict)
-    risk: RiskSummary = field(default_factory=RiskSummary)
 
-    def get_balance(self, asset_id: str) -> Balance:
-        """Return a balance object for the given asset, creating if needed."""
+    # Balances by asset_id ("DGB", "DD", or DigiAsset ID)
+    balances: Dict[str, AssetBalance] = field(default_factory=dict)
+
+    def get_balance(self, asset_id: str) -> AssetBalance:
+        """
+        Return an existing AssetBalance or create an empty one on demand.
+        """
         if asset_id not in self.balances:
-            # Default kind is DIGIASSET for unknown IDs; callers can adjust.
-            self.balances[asset_id] = Balance(
-                asset_id=asset_id,
-                kind=AssetKind.DIGIASSET,
-            )
+            # Heuristic: treat "DGB" specially, "DD" as DigiDollar, others as DigiAssets.
+            if asset_id == "DGB":
+                kind = AssetKind.DGB
+            elif asset_id == "DD":
+                kind = AssetKind.DIGIDOLLAR
+            else:
+                kind = AssetKind.DIGIASSET
+
+            self.balances[asset_id] = AssetBalance(asset_id=asset_id, kind=kind)
+
         return self.balances[asset_id]
 
-    def total_for_kind(self, kind: AssetKind) -> int:
-        """Sum balances for a specific asset kind within this account."""
-        return sum(
-            b.total for b in self.balances.values() if b.kind == kind
-        )
+    def apply_dgb_delta(self, delta_minor: int) -> None:
+        """
+        Convenience helper for DGB balance updates.
+        """
+        bal = self.get_balance("DGB")
+        bal.apply_delta(confirmed_delta=delta_minor)
+
+    def apply_dd_delta(self, delta_units: int) -> None:
+        """
+        Convenience helper for DigiDollar (DD) balance updates.
+        """
+        bal = self.get_balance("DD")
+        bal.apply_delta(confirmed_delta=delta_units)
+
+
+@dataclass
+class WalletMetadata:
+    """
+    Extra metadata that does not affect balances directly but is useful
+    for Guardian, Shield, analytics, or UX.
+    """
+
+    guardian_profile: Optional[str] = None  # e.g. "conservative", "balanced", "aggressive"
+    risk_profile: Optional[str] = None      # future hook for Risk Engine
+    last_risk_sync_height: Optional[int] = None
+    notes: Optional[str] = None
 
 
 @dataclass
 class WalletState:
-    """Top‑level Adamantine wallet snapshot.
+    """
+    Top-level wallet view.
 
-    This is what gets persisted to disk / secure storage and is the
-    main in‑memory model inside the clients.
+    A single WalletState can contain multiple accounts, each with their
+    own addresses and balances, on a given network.
     """
 
-    version: int = 1
-    network: str = "mainnet"  # or "testnet"
-    accounts: Dict[str, Account] = field(default_factory=dict)
-    active_account_id: Optional[str] = None
-    risk: RiskSummary = field(default_factory=RiskSummary)
+    id: str
+    label: str
+    network: Network = Network.MAINNET
 
-    # --- Account helpers -------------------------------------------------
+    accounts: Dict[str, AccountState] = field(default_factory=dict)
+    metadata: WalletMetadata = field(default_factory=WalletMetadata)
 
-    def add_account(self, account: Account) -> None:
-        if account.id in self.accounts:
-            raise ValueError(f"Account with id {account.id!r} already exists")
-        self.accounts[account.id] = account
-        if self.active_account_id is None:
-            self.active_account_id = account.id
+    # Sync / housekeeping
+    last_sync_height: int = 0
+    last_updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def get_account(self, account_id: str) -> Account:
-        try:
-            return self.accounts[account_id]
-        except KeyError as exc:
-            raise KeyError(f"Unknown account id: {account_id!r}") from exc
+    # ------------------------------------------------------------------
+    # Account helpers
+    # ------------------------------------------------------------------
 
-    @property
-    def active_account(self) -> Optional[Account]:
-        if self.active_account_id is None:
-            return None
-        return self.accounts.get(self.active_account_id)
-
-    # --- Aggregate views -------------------------------------------------
-
-    def total_for_kind(self, kind: AssetKind) -> int:
-        """Total units of a given asset kind across all accounts."""
-        return sum(a.total_for_kind(kind) for a in self.accounts.values())
-
-    def total_dgb(self) -> int:
-        return self.total_for_kind(AssetKind.DGB)
-
-    def total_dd(self) -> int:
-        return self.total_for_kind(AssetKind.DD)
-
-    # --- Mutators used by higher‑level transaction logic -----------------
-
-    def apply_balance_delta(
-        self,
-        account_id: str,
-        asset_id: str,
-        kind: AssetKind,
-        confirmed_delta: int = 0,
-        unconfirmed_delta: int = 0,
-    ) -> None:
-        """Adjust balances in response to a transaction effect.
-
-        Higher‑level transaction parsing should decide which account
-        and asset to touch; this function just updates the numbers.
+    def get_account(self, account_id: str) -> AccountState:
         """
+        Return an account, creating an empty one if it does not exist.
 
-        account = self.get_account(account_id)
-        balance = account.get_balance(asset_id)
-        balance.kind = kind  # ensure correct category
+        This keeps flows simple in early prototypes; production code may
+        decide to be stricter and raise if the account is missing.
+        """
+        if account_id not in self.accounts:
+            self.accounts[account_id] = AccountState(id=account_id, label=account_id)
+        return self.accounts[account_id]
 
-        balance.confirmed += confirmed_delta
-        balance.unconfirmed += unconfirmed_delta
+    def ensure_account(self, account_id: str, label: Optional[str] = None) -> AccountState:
+        """
+        Ensure an account exists with an optional label override.
+        """
+        acc = self.get_account(account_id)
+        if label and acc.label != label:
+            acc.label = label
+        return acc
 
-    # --- Simple factory helpers -----------------------------------------
+    # ------------------------------------------------------------------
+    # Balance helpers
+    # ------------------------------------------------------------------
 
-    @classmethod
-    def empty_mainnet(cls) -> "WalletState":
-        """Convenience constructor for a new mainnet wallet."""
-        return cls(version=1, network="mainnet")
+    def apply_dgb_delta(self, account_id: str, delta_minor: int) -> None:
+        """
+        Update DGB balance for a specific account.
+        """
+        acc = self.get_account(account_id)
+        acc.apply_dgb_delta(delta_minor)
+        self._touch()
 
-    @classmethod
-    def empty_testnet(cls) -> "WalletState":
-        """Convenience constructor for a new testnet wallet."""
-        return cls(version=1, network="testnet")
+    def apply_dd_delta(self, account_id: str, delta_units: int) -> None:
+        """
+        Update DigiDollar balance for a specific account.
+        """
+        acc = self.get_account(account_id)
+        acc.apply_dd_delta(delta_units)
+        self._touch()
+
+    # ------------------------------------------------------------------
+    # Snapshots / views
+    # ------------------------------------------------------------------
+
+    def snapshot_balances(self) -> Dict[str, Dict[str, int]]:
+        """
+        Return a simple serialisable snapshot:
+
+        {
+          "account_id": {
+             "DGB": 12345,
+             "DD": 1000,
+             "ASSET-ID-1": 42,
+             ...
+          },
+          ...
+        }
+        """
+        result: Dict[str, Dict[str, int]] = {}
+        for acc_id, acc in self.accounts.items():
+            inner: Dict[str, int] = {}
+            for asset_id, bal in acc.balances.items():
+                inner[asset_id] = bal.confirmed
+            result[acc_id] = inner
+        return result
+
+    # ------------------------------------------------------------------
+    # Internal
+    # ------------------------------------------------------------------
+
+    def _touch(self) -> None:
+        """
+        Update last_updated_at whenever we mutate balances or accounts.
+        """
+        self.last_updated_at = datetime.now(timezone.utc)
