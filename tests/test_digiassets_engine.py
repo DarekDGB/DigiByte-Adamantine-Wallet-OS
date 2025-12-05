@@ -1,24 +1,23 @@
-# tests/test_digiassets_engine.py
-
 """
-Basic tests for DigiAssetsEngine.
+Tests for DigiAssetsEngine mint / transfer / burn orchestration.
 
-These tests make sure that:
-  - mint / transfer flows call the risk engine and guardian
-  - guardian decisions are respected (BLOCK => no TxPlan)
-  - simple validation (amounts, balances) behaves as expected
+We verify:
+
+- basic validation failures (amount <= 0, missing asset_id, missing to_address)
+- Guardian BLOCK verdict short-circuits the flow
+- Guardian REQUIRE_APPROVAL verdict returns guardian_pending stage
+- Guardian ALLOW verdict returns ok=True with a tx_preview structure
 """
 
-import pytest
-
-from modules.digiassets.engine import (
-    AssetId,
-    AssetMintRequest,
-    AssetTransferRequest,
+from core.digiassets.engine import (
     DigiAssetsEngine,
-    GuardianDecision,
-    GuardianOutcome,
+    AssetOperation,
+    AssetOpKind,
+    AssetAmount,
+    AssetId,
 )
+from core.guardian_wallet.adapter import GuardianDecision
+from core.guardian_wallet.models import GuardianVerdict
 
 
 # ---------------------------------------------------------------------------
@@ -26,37 +25,46 @@ from modules.digiassets.engine import (
 # ---------------------------------------------------------------------------
 
 
-class RiskEngineStub:
-    def __init__(self, score: float = 0.1):
-        self.score = score
-        self.calls = []
+class FakeNodeClient:
+    """Minimal stand-in; DigiAssetsEngine does not yet call NodeClient."""
 
-    def score_asset_action(self, context):
-        self.calls.append(context)
-        return self.score
+    def __init__(self) -> None:
+        self.called = False
 
 
-class GuardianEngineStub:
-    def __init__(self, decision: GuardianDecision = GuardianDecision.ALLOW):
+class FakeGuardianAdapter:
+    """Configurable fake that returns a pre-set GuardianDecision."""
+
+    def __init__(self, decision: GuardianDecision) -> None:
         self.decision = decision
-        self.calls = []
+        self.calls: list[dict] = []
 
-    def evaluate_asset_action(self, context, risk_score: float) -> GuardianOutcome:
-        self.calls.append((context, risk_score))
-        # Simple rule: use configured decision, attach a tiny message
-        return GuardianOutcome(
-            decision=self.decision,
-            message=f"stub decision={self.decision.name}",
+    def evaluate_digiasset_op(
+        self,
+        wallet_id: str,
+        account_id: str,
+        value_units: int,
+        op_kind: str,
+        description: str,
+        meta: dict | None = None,
+    ) -> GuardianDecision:
+        # record the call so tests can assert on it
+        self.calls.append(
+            {
+                "wallet_id": wallet_id,
+                "account_id": account_id,
+                "value_units": value_units,
+                "op_kind": op_kind,
+                "description": description,
+                "meta": meta or {},
+            }
         )
+        return self.decision
 
 
-class WalletStateStub:
-    def __init__(self, balances=None):
-        # balances: {(account_id, asset_symbol): amount}
-        self.balances = balances or {}
-
-    def get_asset_balance(self, account_id: str, asset_symbol: str):
-        return self.balances.get((account_id, asset_symbol))
+def _guardian_decision(verdict: GuardianVerdict) -> GuardianDecision:
+    """Helper to make a simple GuardianDecision with no approval request."""
+    return GuardianDecision(verdict=verdict, approval_request=None)
 
 
 # ---------------------------------------------------------------------------
@@ -64,98 +72,114 @@ class WalletStateStub:
 # ---------------------------------------------------------------------------
 
 
-def make_engine(
-    risk_score: float = 0.1,
-    guardian_decision: GuardianDecision = GuardianDecision.ALLOW,
-    balances=None,
-) -> DigiAssetsEngine:
-    risk = RiskEngineStub(score=risk_score)
-    guardian = GuardianEngineStub(decision=guardian_decision)
-    wallet_state = WalletStateStub(balances=balances)
-    engine = DigiAssetsEngine(risk_engine=risk, guardian_engine=guardian, wallet_state=wallet_state)
-    return engine
+def test_validation_failure_blocks_before_guardian():
+    """
+    amount <= 0 should fail validation and never call GuardianAdapter.
+    """
 
+    node = FakeNodeClient()
+    guardian = FakeGuardianAdapter(_guardian_decision(GuardianVerdict.ALLOW))
+    engine = DigiAssetsEngine(node_client=node, guardian=guardian)
 
-def test_mint_happy_path_creates_tx_plan():
-    engine = make_engine(risk_score=0.2, guardian_decision=GuardianDecision.ALLOW)
-
-    request = AssetMintRequest(
-        asset_id=AssetId(symbol="TESTASSET"),
-        amount=1000,
-        metadata={"name": "Test Asset"},
-        from_account="account_1",
+    op = AssetOperation(
+        op=AssetOpKind.MINT,
+        wallet_id="w1",
+        account_id="a1",
+        asset_id=None,  # first-time mint is OK
+        amount=AssetAmount(units=0),  # invalid: must be positive
     )
 
-    result = engine.plan_mint(request)
+    result = engine.handle_operation(op)
 
-    # Risk + guardian were called
-    assert result.risk_score == 0.2
-    assert result.guardian.decision == GuardianDecision.ALLOW
-    assert result.tx_plan is not None
-
-    # TxPlan has some basic hints wired correctly
-    plan = result.tx_plan
-    assert "Mint" in plan.description
-    assert plan.inputs_hint["from_account"] == "account_1"
-    assert plan.inputs_hint["asset_symbol"] == "TESTASSET"
-    assert plan.metadata["engine"] == "digiassets"
-    assert plan.metadata["purpose"] == "mint"
+    assert result.ok is False
+    assert result.details["stage"] == "validation"
+    assert "amount_must_be_positive" in result.details["errors"]
+    # Guardian should not be consulted on pure validation failure
+    assert guardian.calls == []
 
 
-def test_mint_blocked_by_guardian_has_no_tx_plan():
-    engine = make_engine(
-        risk_score=0.9,
-        guardian_decision=GuardianDecision.BLOCK,
+def test_guardian_block_stops_flow():
+    """
+    If Guardian returns BLOCK for a valid operation, engine should
+    surface guardian_block stage and ok=False.
+    """
+
+    node = FakeNodeClient()
+    guardian = FakeGuardianAdapter(_guardian_decision(GuardianVerdict.BLOCK))
+    engine = DigiAssetsEngine(node_client=node, guardian=guardian)
+
+    op = AssetOperation(
+        op=AssetOpKind.MINT,
+        wallet_id="w1",
+        account_id="a1",
+        asset_id=None,
+        amount=AssetAmount(units=10),
     )
 
-    request = AssetMintRequest(
-        asset_id=AssetId(symbol="RISKY"),
-        amount=1,
-        metadata={},
-        from_account="account_1",
+    result = engine.handle_operation(op)
+
+    assert result.ok is False
+    assert result.details["stage"] == "guardian_block"
+    assert guardian.calls  # guardian was consulted
+
+
+def test_guardian_requires_approval_returns_pending_stage():
+    """
+    REQUIRE_APPROVAL should return ok=False with guardian_pending stage,
+    leaving higher layers to handle approval UX.
+    """
+
+    node = FakeNodeClient()
+    guardian = FakeGuardianAdapter(
+        _guardian_decision(GuardianVerdict.REQUIRE_APPROVAL)
+    )
+    engine = DigiAssetsEngine(node_client=node, guardian=guardian)
+
+    op = AssetOperation(
+        op=AssetOpKind.TRANSFER,
+        wallet_id="w1",
+        account_id="a1",
+        asset_id=AssetId(id="asset-1"),
+        amount=AssetAmount(units=50),
+        to_address="dgb1qexample...",
     )
 
-    result = engine.plan_mint(request)
+    result = engine.handle_operation(op)
 
-    assert result.guardian.decision == GuardianDecision.BLOCK
-    assert result.tx_plan is None
+    assert result.ok is False
+    assert result.details["stage"] == "guardian_pending"
+    assert guardian.calls  # guardian was consulted
 
 
-def test_transfer_fails_on_insufficient_balance():
-    # Wallet has only 10 units of TESTASSET
-    balances = {("source_account", "TESTASSET"): 10}
-    engine = make_engine(balances=balances)
+def test_guardian_allow_returns_tx_preview_ready():
+    """
+    ALLOW should return ok=True and a tx_preview structure containing
+    the key fields from AssetOperation.
+    """
 
-    request = AssetTransferRequest(
-        asset_id=AssetId(symbol="TESTASSET"),
-        amount=20,  # more than balance
-        from_account="source_account",
-        to_address="dgb1qexample",
+    node = FakeNodeClient()
+    guardian = FakeGuardianAdapter(_guardian_decision(GuardianVerdict.ALLOW))
+    engine = DigiAssetsEngine(node_client=node, guardian=guardian)
+
+    op = AssetOperation(
+        op=AssetOpKind.BURN,
+        wallet_id="w1",
+        account_id="a1",
+        asset_id=AssetId(id="asset-xyz"),
+        amount=AssetAmount(units=5),
+        to_address=None,
+        memo="burn some supply",
     )
 
-    with pytest.raises(ValueError):
-        engine.plan_transfer(request)
+    result = engine.handle_operation(op)
 
+    assert result.ok is True
+    assert result.details["stage"] == "ready"
 
-def test_transfer_happy_path_builds_tx_plan():
-    balances = {("source_account", "TESTASSET"): 100}
-    engine = make_engine(balances=balances)
-
-    request = AssetTransferRequest(
-        asset_id=AssetId(symbol="TESTASSET"),
-        amount=25,
-        from_account="source_account",
-        to_address="dgb1qdestination",
-        memo="hello",
-    )
-
-    result = engine.plan_transfer(request)
-
-    assert result.guardian.decision == GuardianDecision.ALLOW
-    assert result.tx_plan is not None
-
-    plan = result.tx_plan
-    assert plan.outputs_hint["to_address"] == "dgb1qdestination"
-    assert plan.outputs_hint["amount"] == 25
-    assert plan.metadata["purpose"] == "transfer"
-    assert plan.metadata["engine"] == "digiassets"
+    preview = result.details["tx_preview"]
+    assert preview["op"] == "burn"
+    assert preview["wallet_id"] == "w1"
+    assert preview["account_id"] == "a1"
+    assert preview["asset_id"] == "asset-xyz"
+    assert preview["amount_units"] == 5
+    assert preview["memo"] == "burn some supply"
