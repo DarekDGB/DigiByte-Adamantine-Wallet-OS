@@ -20,11 +20,12 @@ DigiByte Core / DigiAssets plumbing is in place.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, asdict
 from enum import Enum, auto
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 from core.guardian_wallet.adapter import GuardianAdapter, GuardianDecision
+from modules.dd_minting.engine import DDMintingEngine
 
 
 class SendStatus(Enum):
@@ -143,6 +144,118 @@ class WalletService:
                 guardian_decision=decision,
                 error_message=str(exc),
             )
+
+    # ------------------------------------------------------------------
+    # Public API — DigiDollar (DD) previews
+    # ------------------------------------------------------------------
+
+    def preview_dd_mint(
+        self,
+        wallet_id: str,
+        account_id: str,
+        dgb_amount: int,
+        dd_engine: DDMintingEngine,
+        description: str = "Mint DigiDollar (DD)",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        High-level helper for DigiDollar mint (DGB -> DD).
+
+        Orchestration steps:
+          1. Ask the DDMintingEngine for a preview (rates, fees, DD out).
+          2. Ask GuardianAdapter if this mint is allowed / needs approval.
+          3. Return a single dict that UI / clients can consume.
+        """
+        meta = meta or {}
+
+        # 1) Core DD economics + constraints
+        preview = dd_engine.preview_mint(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dgb_in=dgb_amount,
+            meta=meta,
+        )
+
+        # 2) Guardian policy check
+        guardian_decision: GuardianDecision = self.guardian.evaluate_mint_dd(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dgb_value_in=dgb_amount,
+            description=description,
+            meta={"flow": "dd_mint", **meta},
+        )
+
+        # 3) Normalised response
+        return {
+            "wallet_id": wallet_id,
+            "account_id": account_id,
+            "flow": "dd_mint",
+            "dd_preview": asdict(preview),
+            "guardian_verdict": getattr(
+                guardian_decision.verdict, "name", str(guardian_decision.verdict)
+            ),
+            "guardian_needs_approval": guardian_decision.needs_approval(),
+            "guardian_is_blocked": guardian_decision.is_blocked(),
+            "guardian_request": (
+                asdict(guardian_decision.approval_request)
+                if guardian_decision.approval_request is not None
+                else None
+            ),
+        }
+
+    def preview_dd_redeem(
+        self,
+        wallet_id: str,
+        account_id: str,
+        dd_amount: int,
+        dd_engine: DDMintingEngine,
+        description: str = "Redeem DigiDollar (DD)",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        High-level helper for DigiDollar redeem (DD -> DGB).
+
+        Orchestration steps:
+          1. Ask DDMintingEngine for a redeem preview.
+          2. Ask GuardianAdapter whether this redeem is allowed.
+          3. Return a single dict for UI / clients.
+        """
+        meta = meta or {}
+
+        # 1) Core DD economics + constraints
+        preview = dd_engine.preview_redeem(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dd_amount=dd_amount,
+            meta=meta,
+        )
+
+        # 2) Guardian policy check
+        guardian_decision: GuardianDecision = self.guardian.evaluate_redeem_dd(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dd_amount=dd_amount,
+            description=description,
+            meta={"flow": "dd_redeem", **meta},
+        )
+
+        # 3) Normalised response
+        return {
+            "wallet_id": wallet_id,
+            "account_id": account_id,
+            "flow": "dd_redeem",
+            "dd_preview": asdict(preview),
+            "guardian_verdict": getattr(
+                guardian_decision.verdict, "name", str(guardian_decision.verdict)
+            ),
+            "guardian_needs_approval": guardian_decision.needs_approval(),
+            "guardian_is_blocked": guardian_decision.is_blocked(),
+            "guardian_request": (
+                asdict(guardian_decision.approval_request)
+                if guardian_decision.approval_request is not None
+                else None
+            ),
+        }
 
     # ------------------------------------------------------------------
     # Internal helpers
