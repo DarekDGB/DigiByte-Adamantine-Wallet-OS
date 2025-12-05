@@ -21,7 +21,10 @@ from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, List, Optional, Tuple
 
-from core.guardian_wallet.adapter import GuardianAdapter, GuardianDecision
+from core.guardian_wallet.guardian_adapter import (
+    GuardianAdapter,
+    GuardianDecision,
+)
 from core.node.node_client import NodeClient
 
 
@@ -230,7 +233,7 @@ class DigiAssetsEngine:
         Construct a synthetic GuardianDecision used when validation fails
         before Guardian is even consulted.
         """
-        from core.guardian_wallet.models import GuardianVerdict, ApprovalRequest
+        from core.guardian_wallet.models import GuardianVerdict
 
         return GuardianDecision(
             verdict=GuardianVerdict.BLOCK,
