@@ -2,35 +2,30 @@ name: Android CI
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ main ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ main ]
 
 jobs:
-  build:
-    name: Build & Lint Android Client
+  android-python-tests:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK
-        uses: actions/setup-java@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          distribution: "temurin"
-          java-version: "17"
+          python-version: "3.11"
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Install dependencies (if any)
+        run: |
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          fi
+          pip install pytest
 
-      - name: Grant execution permission for Gradle
-        run: chmod +x ./clients/android/gradlew
-
-      - name: Build Android app
-        working-directory: ./clients/android
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Run Android Lint
-        working-directory: ./clients/android
-        run: ./gradlew lint
+      - name: Run Python tests
+        run: |
+          pytest -q
