@@ -8,7 +8,7 @@ Wallet / DD / DigiAssets code should NOT construct rules or interpret
 Guardian internals directly. Instead, they call these helpers with
 high-level parameters and receive:
 
-    (GuardianVerdict, ApprovalRequest | None)
+    GuardianDecision
 
 This keeps the rest of the codebase simple and makes it easy to evolve
 Guardian over time without touching every flow.
@@ -16,18 +16,18 @@ Guardian over time without touching every flow.
 Typical usage from a send flow:
 
     adapter = GuardianAdapter(engine)
-    verdict, approval_req = adapter.evaluate_send_dgb(
+    decision = adapter.evaluate_send_dgb(
         wallet_id="w1",
         account_id="a1",
         value_dgb=50_000,  # minor units or absolute units, per convention
         description="user send",
     )
 
-    if verdict == GuardianVerdict.ALLOW:
+    if decision.is_allowed():
         ... proceed ...
-    elif verdict == GuardianVerdict.REQUIRE_APPROVAL:
+    elif decision.needs_approval():
         ... show guardian approval UI ...
-    elif verdict == GuardianVerdict.BLOCK:
+    elif decision.is_blocked():
         ... show blocked message ...
 """
 
@@ -39,7 +39,6 @@ from typing import Optional, Dict, Any
 
 from .engine import GuardianEngine, ActionContext, GuardianVerdict
 from .models import (
-    GuardianRule,
     RuleAction,
     ApprovalRequest,
 )
@@ -99,11 +98,13 @@ class GuardianAdapter:
         (e.g. if rules are defined in "DGB units", pass DGB; if in
         "minor units", pass the same minor units).
         """
+        value_int = int(value_dgb) if not isinstance(value_dgb, int) else value_dgb
+
         ctx = ActionContext(
             action=RuleAction.SEND,
             wallet_id=wallet_id,
             account_id=account_id,
-            value=int(value_dgb) if not isinstance(value_dgb, int) else value_dgb,
+            value=value_int,
             description=description,
             meta=meta or {},
         )
@@ -122,14 +123,17 @@ class GuardianAdapter:
         """
         Evaluate a DigiDollar mint (DGB -> DD) before executing.
 
-        This assumes Guardian rules include a RuleAction for minting DD.
+        This assumes Guardian rules include a RuleAction for minting DD,
+        or they fall back to SEND.
         """
+        value_int = int(dgb_value_in) if not isinstance(dgb_value_in, int) else dgb_value_in
         action = getattr(RuleAction, "MINT_DD", RuleAction.SEND)
+
         ctx = ActionContext(
             action=action,
             wallet_id=wallet_id,
             account_id=account_id,
-            value=int(dgb_value_in) if not isinstance(dgb_value_in, int) else dgb_value_in,
+            value=value_int,
             description=description,
             meta=meta or {},
         )
@@ -151,12 +155,14 @@ class GuardianAdapter:
         The numeric convention for `dd_amount` should match how rules
         are expressed (e.g. DD units).
         """
+        value_int = int(dd_amount) if not isinstance(dd_amount, int) else dd_amount
         action = getattr(RuleAction, "REDEEM_DD", RuleAction.SEND)
+
         ctx = ActionContext(
             action=action,
             wallet_id=wallet_id,
             account_id=account_id,
-            value=int(dd_amount) if not isinstance(dd_amount, int) else dd_amount,
+            value=value_int,
             description=description,
             meta=meta or {},
         )
@@ -181,6 +187,7 @@ class GuardianAdapter:
         back to SEND.
         """
         action = self._map_digiasset_action(op_kind)
+
         ctx = ActionContext(
             action=action,
             wallet_id=wallet_id,
@@ -208,6 +215,7 @@ class GuardianAdapter:
         (e.g. high-value messages, governance actions) with Guardian rules.
         """
         action = getattr(RuleAction, "ENIGMATIC", RuleAction.SEND)
+
         ctx = ActionContext(
             action=action,
             wallet_id=wallet_id,
@@ -219,6 +227,99 @@ class GuardianAdapter:
 
         verdict, approval = self._engine.evaluate(ctx)
         return GuardianDecision(verdict=verdict, approval_request=approval)
+
+    # ------------------------------------------------------------------
+    # DigiAsset-specific convenience wrappers
+    # ------------------------------------------------------------------
+
+    def evaluate_asset_creation(
+        self,
+        wallet_id: str,
+        account_id: str,
+        description: str = "Create DigiAsset",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> GuardianDecision:
+        """
+        Evaluate a DigiAsset *creation* (no concrete amount yet).
+
+        We treat creation as a special-case operation and pass value 0,
+        so rules that care only about 'creating new assets' can be keyed
+        on the RuleAction type rather than the numeric value.
+        """
+        return self.evaluate_digiasset_op(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            value_units=0,
+            op_kind="mint",
+            description=description,
+            meta=meta or {},
+        )
+
+    def evaluate_asset_issuance(
+        self,
+        wallet_id: str,
+        account_id: str,
+        asset_id: str,
+        amount: int,
+        description: str = "Issue DigiAsset units",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> GuardianDecision:
+        """
+        Evaluate an *issuance* (or extra mint) of an existing DigiAsset.
+        """
+        meta_merged = {"asset_id": asset_id, **(meta or {})}
+        return self.evaluate_digiasset_op(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            value_units=amount,
+            op_kind="mint",
+            description=description,
+            meta=meta_merged,
+        )
+
+    def evaluate_asset_transfer(
+        self,
+        wallet_id: str,
+        account_id: str,
+        asset_id: str,
+        amount: int,
+        description: str = "Transfer DigiAsset units",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> GuardianDecision:
+        """
+        Evaluate a DigiAsset transfer between addresses.
+        """
+        meta_merged = {"asset_id": asset_id, **(meta or {})}
+        return self.evaluate_digiasset_op(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            value_units=amount,
+            op_kind="transfer",
+            description=description,
+            meta=meta_merged,
+        )
+
+    def evaluate_asset_burn(
+        self,
+        wallet_id: str,
+        account_id: str,
+        asset_id: str,
+        amount: int,
+        description: str = "Burn DigiAsset units",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> GuardianDecision:
+        """
+        Evaluate a DigiAsset burn (destroying units).
+        """
+        meta_merged = {"asset_id": asset_id, **(meta or {})}
+        return self.evaluate_digiasset_op(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            value_units=amount,
+            op_kind="burn",
+            description=description,
+            meta=meta_merged,
+        )
 
     # ------------------------------------------------------------------
     # Internal helpers
