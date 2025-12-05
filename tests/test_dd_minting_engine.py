@@ -16,56 +16,28 @@ to verify:
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from pathlib import Path
-import importlib.util
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Dynamic imports for dd-minting engine + models
-# (folder name has a dash, so we load by file path instead of package name)
-# ---------------------------------------------------------------------------
-
-_dd_base = (
-    Path(__file__).resolve().parent.parent
-    / "modules"
-    / "dd-minting"
+from modules.dd_minting.engine import (
+    DDMintingEngine,
+    DDOracleService,
+    DDGuardianService,
 )
 
-# Load engine.py
-_engine_spec = importlib.util.spec_from_file_location(
-    "dd_minting_engine",
-    _dd_base / "engine.py",
+from modules.dd_minting.models import (
+    DGBAmount,
+    DDAmount,
+    FiatCurrency,
+    FlowKind,
+    OracleQuote,
+    MintQuoteRequest,
+    RedeemQuoteRequest,
+    MintConfirmRequest,
+    RedeemConfirmRequest,
+    DDActionRiskLevel,
+    DDGuardianAssessment,
 )
-_engine_mod = importlib.util.module_from_spec(_engine_spec)  # type: ignore[arg-type]
-assert _engine_spec is not None and _engine_spec.loader is not None
-_engine_spec.loader.exec_module(_engine_mod)  # type: ignore[attr-defined]
-
-# Load models.py
-_models_spec = importlib.util.spec_from_file_location(
-    "dd_minting_models",
-    _dd_base / "models.py",
-)
-_models_mod = importlib.util.module_from_spec(_models_spec)  # type: ignore[arg-type]
-assert _models_spec is not None and _models_spec.loader is not None
-_models_spec.loader.exec_module(_models_mod)  # type: ignore[attr-defined]
-
-# Re-export the symbols the tests expect, so the rest of the file stays the same
-DDMintingEngine = _engine_mod.DDMintingEngine
-DDOracleService = _engine_mod.DDOracleService
-DDGuardianService = _engine_mod.DDGuardianService
-
-DGBAmount = _models_mod.DGBAmount
-DDAmount = _models_mod.DDAmount
-FiatCurrency = _models_mod.FiatCurrency
-FlowKind = _models_mod.FlowKind
-OracleQuote = _models_mod.OracleQuote
-MintQuoteRequest = _models_mod.MintQuoteRequest
-RedeemQuoteRequest = _models_mod.RedeemQuoteRequest
-MintConfirmRequest = _models_mod.MintConfirmRequest
-RedeemConfirmRequest = _models_mod.RedeemConfirmRequest
-DDActionRiskLevel = _models_mod.DDActionRiskLevel
-DDGuardianAssessment = _models_mod.DDGuardianAssessment
 
 
 # ---------------------------------------------------------------------------
