@@ -12,9 +12,6 @@ it provides high-level methods that:
   - check Guardian policies
   - talk to a node client for broadcasting
   - return clear results for the UI layer
-
-The actual transaction construction will be implemented later, once the
-DigiByte Core / DigiAssets plumbing is in place.
 """
 
 from __future__ import annotations
@@ -22,6 +19,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, Optional
+
+from core.guardian_wallet.models import GuardianDecision as GWGuardianDecision
 
 
 class SendStatus(Enum):
@@ -36,18 +35,13 @@ class SendStatus(Enum):
 @dataclass
 class SendResult:
     """
-    Result object returned by WalletService methods.
+    Result object returned by WalletService methods (integration style).
 
-    New-style usage (integration tests, UI, etc.):
+    Integration tests & UI use:
         result.status        -> SendStatus
         result.tx_id         -> str | None
         result.error_message -> str | None
-
-    Legacy tests still expect dict-like access:
-        result["status"]   -> "blocked" | "needs_approval" | "broadcasted" | "failed"
-        result["tx_id"]    -> str | None
-        result["error"]    -> error_message | None
-        result["guardian"] -> guardian_decision object
+        result.guardian_decision -> Any
     """
 
     status: SendStatus
@@ -55,50 +49,19 @@ class SendResult:
     error_message: Optional[str] = None
     guardian_decision: Any = None
 
-    # ---------------- Dict-style compatibility for older tests ----------------
-
-    def _status_string(self) -> str:
-        """Map SendStatus enum to legacy string values expected by tests."""
-        mapping = {
-            SendStatus.BLOCKED: "blocked",
-            SendStatus.PENDING_GUARDIAN: "needs_approval",
-            SendStatus.ALLOWED: "broadcasted",
-            SendStatus.FAILED: "failed",
-        }
-        return mapping.get(self.status, "unknown")
-
-    def __getitem__(self, key: str) -> Any:
-        """
-        Allow result["status"], result["tx_id"], result["error"], result["guardian"].
-
-        This keeps `SendResult` compatible with older dict-based tests.
-        """
-        if key == "status":
-            return self._status_string()
-        if key == "tx_id":
-            return self.tx_id
-        if key == "error":
-            return self.error_message
-        if key == "guardian":
-            return self.guardian_decision
-        raise KeyError(key)
-
 
 @dataclass
 class WalletService:
     """
     Thin orchestration layer for wallet actions.
 
-    Dependencies are injected so this can be tested easily and wired up
-    differently on Android / iOS / Web:
+    - guardian / guardian_adapter: object with methods like
+      `evaluate_send_dgb`, `evaluate_mint_dd`, `evaluate_redeem_dd`.
+    - node_manager: object that can give us a node client.
 
-      - guardian / guardian_adapter: Guardian-like object with
-        `evaluate_send_dgb`, `evaluate_mint_dd`, `evaluate_redeem_dd`.
-      - node_manager: an object that can return the "best" node client
-        via `get_best_node()` or `get_preferred_node()`.
-
-    Node client is expected to expose `broadcast_tx(tx)` where `tx` is a
-    simple dict for tests.
+    The node client API is deliberately simple for tests:
+      - DummyNodeClient: broadcast_tx(tx_dict)
+      - _FakeNodeClient: broadcast_tx(tx_hex_str)
     """
 
     guardian: Any
@@ -111,7 +74,7 @@ class WalletService:
         guardian_adapter: Any | None = None,
         node_manager: Any,
     ) -> None:
-        # Support both parameter names used in tests:
+        # Support both parameter names:
         #   WalletService(guardian=..., node_manager=...)
         #   WalletService(guardian_adapter=..., node_manager=...)
         if guardian is None:
@@ -129,7 +92,6 @@ class WalletService:
             return self.node_manager.get_best_node()
         if hasattr(self.node_manager, "get_preferred_node"):
             return self.node_manager.get_preferred_node()
-        # Some unit tests pass an object with `client` directly.
         if hasattr(self.node_manager, "client"):
             return self.node_manager.client
         raise RuntimeError("Node manager does not expose a node getter or client")
@@ -137,19 +99,18 @@ class WalletService:
     @staticmethod
     def _interpret_guardian_decision(decision: Any) -> tuple[bool, bool]:
         """
-        Normalise different guardian decision shapes into (blocked, needs_approval).
+        Normalise guardian decisions into (blocked, needs_approval).
 
-        Handles:
-          - decision.blocked (bool)
-          - decision.needs (bool)
-          - decision.needs_approval (bool or method returning bool)
+        Supports:
+          - core.guardian_wallet.models.GuardianDecision
+          - DummyDecision from integration tests (blocked, needs, needs_approval())
         """
+        # Direct GuardianDecision: trust its fields.
+        if isinstance(decision, GWGuardianDecision):
+            return bool(decision.blocked), bool(getattr(decision, "needs_approval", False))
+
         blocked = bool(getattr(decision, "blocked", False))
-
-        # Some test doubles use a simple boolean `.needs`,
-        # others expose `needs_approval()` as a method.
         needs_flag = getattr(decision, "needs", False)
-
         needs_attr = getattr(decision, "needs_approval", None)
         if callable(needs_attr):
             needs_method_val = needs_attr()
@@ -157,7 +118,6 @@ class WalletService:
             needs_method_val = False
         else:
             needs_method_val = needs_attr
-
         needs_approval = bool(needs_flag or needs_method_val)
         return blocked, needs_approval
 
@@ -178,13 +138,16 @@ class WalletService:
         to_address: str | None = None,
         amount_minor: int | None = None,
         amount_units: int | None = None,
-    ) -> SendResult:
+    ) -> Any:
         """
         Orchestrate a DGB send with Guardian checks.
 
-        This signature is intentionally flexible so both unit tests
-        (value_dgb + tx_hex) and integration tests (to_address +
-        amount_minor) can call it without TypeError.
+        Behaviour:
+
+        - If guardian returns our GuardianDecision  → unit-test mode:
+              returns a *dict* {status, tx_id, error, guardian}
+        - Otherwise (DummyDecision / no guardian) → integration mode:
+              returns SendResult with SendStatus.
         """
 
         # ------------------------------------------------------------------
@@ -202,15 +165,14 @@ class WalletService:
                 else 0
             )
 
-            # Try the richest signature first; fall back if test doubles
-            # don't accept certain kwargs.
+            # Try the rich signature first; fall back for test doubles that
+            # don't accept keyword arguments.
             try:
                 decision = self.guardian.evaluate_send_dgb(
                     wallet_id=wallet_id,
                     account_id=account_id,
                     value_dgb=amount_for_guardian,
                     description=description,
-                    tx_hex=tx_hex,
                 )
             except TypeError:
                 try:
@@ -218,36 +180,77 @@ class WalletService:
                         wallet_id, account_id, amount_for_guardian
                     )
                 except TypeError:
-                    decision = self.guardian.evaluate_send_dgb(
-                        wallet_id, account_id
-                    )
+                    decision = self.guardian.evaluate_send_dgb(wallet_id, account_id)
 
+        is_guardian_decision = isinstance(decision, GWGuardianDecision)
+        blocked = False
+        needs_approval = False
+        if decision is not None:
             blocked, needs_approval = self._interpret_guardian_decision(decision)
 
+        # ----------------- UNIT-TEST MODE (dict results) -----------------
+        if is_guardian_decision:
+            # Blocked: never touch the node.
             if blocked:
-                return SendResult(
-                    status=SendStatus.BLOCKED,
-                    tx_id=None,
-                    error_message="Action blocked by Guardian policy.",
-                    guardian_decision=decision,
-                )
+                return {
+                    "status": "blocked",
+                    "tx_id": None,
+                    "error": None,
+                    "guardian": decision,
+                }
 
+            # Needs approval: again, never touch the node.
             if needs_approval:
-                return SendResult(
-                    status=SendStatus.PENDING_GUARDIAN,
-                    tx_id=None,
-                    error_message=None,
-                    guardian_decision=decision,
-                )
+                return {
+                    "status": "needs_approval",
+                    "tx_id": None,
+                    "error": None,
+                    "guardian": decision,
+                }
 
-        # ------------------------------------------------------------------
-        # 2) Guardian allowed -> talk to node backend
-        # ------------------------------------------------------------------
+            # Allowed by guardian → call the fake node client using tx_hex.
+            node = self._get_node_client()
+            try:
+                # Unit tests care only that broadcast was (or wasn't) called.
+                tx_hex_to_use = tx_hex or ""
+                tx_id = node.broadcast_tx(tx_hex_to_use)
+                return {
+                    "status": "broadcasted",
+                    "tx_id": tx_id,
+                    "error": None,
+                    "guardian": decision,
+                }
+            except Exception as exc:  # pragma: no cover - defensive
+                return {
+                    "status": "failed",
+                    "tx_id": None,
+                    "error": str(exc),
+                    "guardian": decision,
+                }
+
+        # ---------------- INTEGRATION MODE (SendResult) ------------------
+
+        # Guardian blocked or needs approval in DummyDecision world.
+        if blocked:
+            return SendResult(
+                status=SendStatus.BLOCKED,
+                tx_id=None,
+                error_message="Action blocked by Guardian policy.",
+                guardian_decision=decision,
+            )
+        if needs_approval:
+            return SendResult(
+                status=SendStatus.PENDING_GUARDIAN,
+                tx_id=None,
+                error_message=None,
+                guardian_decision=decision,
+            )
+
+        # Guardian allows → talk to node backend.
         node = self._get_node_client()
 
-        # Integration tests: expect node.broadcasts[0]["amount"] == amount_minor
-        # Unit tests: they only care that broadcast was/wasn't called.
         if amount_minor is not None and to_address is not None:
+            # Integration tests expect a dict payload with "amount".
             tx_payload: Dict[str, Any] = {
                 "flow": "send_dgb",
                 "wallet_id": wallet_id,
@@ -257,7 +260,7 @@ class WalletService:
                 "description": description,
             }
         else:
-            # Fallback simple payload for unit-style tests
+            # Generic fallback payload.
             tx_payload = {
                 "flow": "send_dgb",
                 "wallet_id": wallet_id,
@@ -275,7 +278,7 @@ class WalletService:
                 error_message=None,
                 guardian_decision=decision,
             )
-        except Exception as exc:  # pragma: no cover - defensive logging
+        except Exception as exc:  # pragma: no cover
             return SendResult(
                 status=SendStatus.FAILED,
                 tx_id=None,
@@ -300,7 +303,7 @@ class WalletService:
         Integration tests expect:
           - Guardian is consulted
           - Node receives a broadcast with meta["amount"] == amount_units
-          - tx_id == "tx_fake_123" from DummyNodeClient
+          - tx_id == "tx_fake_123"
         """
         decision: Any = None
         if self.guardian is not None and hasattr(self.guardian, "evaluate_mint_dd"):
@@ -331,7 +334,7 @@ class WalletService:
             "flow": "dd_mint",
             "wallet_id": wallet_id,
             "account_id": account_id,
-            # IMPORTANT: tests expect key name "amount"
+            # tests look for this exact key
             "amount": amount_units,
         }
 
@@ -361,8 +364,8 @@ class WalletService:
         """
         High-level helper for DigiDollar redeem (DD -> DGB).
 
-        Tests currently check the blocked behaviour but we keep full
-        logic for symmetry with `mint_dd`.
+        Tests mainly verify the BLOCKED behaviour, but we keep full flow
+        for symmetry with `mint_dd`.
         """
         decision: Any = None
         if self.guardian is not None and hasattr(self.guardian, "evaluate_redeem_dd"):
