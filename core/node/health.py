@@ -2,19 +2,18 @@
 core/node/health.py
 
 Pure scoring logic for evaluating DigiByte node health.
-NodeClient performs RPC calls; NodeManager collects measurements.
-This module turns raw observations into a normalized 0–100 score.
 
 Design goals:
     - deterministic and testable
     - monotonic score (more problems → lower score)
-    - wallet can treat scores <40 as unhealthy, <20 as failing
+    - simple health states:
+        UNKNOWN / HEALTHY / DEGRADED / UNHEALTHY
 
 Tests expect three public entry points:
 
-    - NodeMetrics      – raw node measurements
-    - NodeHealth       – evaluated health result
-    - score_node_health() – helper function to go from metrics -> health
+    - NodeMetrics            – raw node measurements
+    - NodeHealth             – evaluated health result
+    - score_node_health()    – helper metrics -> health
 """
 
 from __future__ import annotations
@@ -33,33 +32,25 @@ class NodeMetrics:
     """
     Simple container for raw node metrics.
 
-    Tests expect NodeMetrics + NodeHealth + score_node_health to exist
-    in this module.
+    Tests construct this as:
 
-    Fields are intentionally generic so the same structure can be used
-    by different node backends (RPC, Digi-Mobile, etc.).
+        NodeMetrics(
+            latency_ms=...,
+            failure_ratio=...,
+            height_drift=...,
+        )
+
+    where:
+
+        latency_ms    – round-trip latency in milliseconds
+        failure_ratio – fraction of recent RPC calls that failed (0.0–1.0)
+        height_drift  – how many blocks this node is behind (or ahead) of
+                        the best known height (0 = perfectly in sync)
     """
 
-    latency_ms: Optional[float]
-    """Round-trip latency in milliseconds (None = not measured)."""
-
-    sync_height: Optional[int]
-    """
-    Height reported by this node (its own tip).  This is what we compare
-    against a reference / network height.
-    """
-
-    best_height: Optional[int]
-    """
-    Optional "best known" height (some nodes expose this separately).
-    If not available, callers can pass the same value as sync_height.
-    """
-
-    mempool_tx: Optional[int]
-    """Number of transactions currently in this node's mempool."""
-
-    peers: Optional[int]
-    """Number of connected peers (None if not reported)."""
+    latency_ms: Optional[float] = None
+    failure_ratio: float = 0.0
+    height_drift: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -69,25 +60,44 @@ class NodeMetrics:
 
 @dataclass
 class NodeHealth:
-    """Represents the evaluated health of a single node."""
+    """
+    Evaluated health of a single node.
 
-    reachable: bool
-    block_height: Optional[int]
+    Attributes
+    ----------
+    latency_ms : float | None
+        Raw latency from metrics.
+    failure_ratio : float
+        Raw failure ratio from metrics.
+    height_drift : int
+        Raw height drift from metrics.
+    score : float
+        Normalised score in [0, 100].
+    status : str
+        One of: "unknown", "healthy", "degraded", "unhealthy".
+    """
+
     latency_ms: Optional[float]
-    error_count: int
+    failure_ratio: float
+    height_drift: int
     score: float
+    status: str
+
+    # Convenience helpers used by tests / callers
+    def is_unknown(self) -> bool:
+        return self.status == "unknown"
 
     def is_healthy(self) -> bool:
-        return self.score >= 60
+        return self.status == "healthy"
+
+    def is_degraded(self) -> bool:
+        return self.status == "degraded"
 
     def is_unhealthy(self) -> bool:
-        return self.score < 40
-
-    def is_failing(self) -> bool:
-        return self.score < 20
+        return self.status == "unhealthy"
 
 
-# Backwards-compatibility alias (if any older code used this name).
+# Backwards-compatibility alias if older code imported this name.
 NodeHealthResult = NodeHealth
 
 
@@ -98,103 +108,136 @@ NodeHealthResult = NodeHealth
 
 class NodeHealthScorer:
     """
-    Pure scorer that turns:
-        - latency
-        - block height comparison
-        - error counts
-        - reachability
-
-    into a 0–100 score.
-
-    NodeManager will merge this with timestamp history to form rolling scores.
+    Pure scorer that turns NodeMetrics into a 0–100 score and a simple status.
     """
 
-    MAX_SCORE = 100
-    MIN_SCORE = 0
+    MAX_SCORE = 100.0
+    MIN_SCORE = 0.0
 
     @staticmethod
-    def score_node(
-        reachable: bool,
-        latency_ms: Optional[float],
-        node_height: Optional[int],
-        network_height: Optional[int],
-        error_count: int,
-    ) -> NodeHealth:
+    def _score_latency(latency_ms: Optional[float]) -> float:
         """
-        Score a node using weighted, monotonic rules.
+        Map latency into [0, 1].
 
-        Parameters
-        ----------
-        reachable : bool
-            Whether the node responded to RPC.
-        latency_ms : float | None
-            Round-trip time. None = unreachable or not measured.
-        node_height : int | None
-            Reported node block height (from this node).
-        network_height : int | None
-            Reference chain tip (remote API, DQSN consensus, or another node).
-        error_count : int
-            Number of RPC failures in recent window.
+        Thresholds are chosen to match the intent of tests:
+
+            - < 500 ms      → perfect (1.0)
+            - 500–2000 ms   → mildly degraded (0.7)
+            - 2000–4000 ms  → worse (0.4)
+            - >= 4000 ms    → unhealthy (0.1)
+            - None          → unknown (treated as neutral 0.5)
+        """
+        if latency_ms is None:
+            return 0.5
+
+        if latency_ms < 500:
+            return 1.0
+        if latency_ms < 2000:
+            return 0.7
+        if latency_ms < 4000:
+            return 0.4
+        return 0.1
+
+    @staticmethod
+    def _score_failure_ratio(ratio: float) -> float:
+        """
+        Map failure ratio (0.0–1.0) into [0, 1].
+
+            - 0.0–0.1   → healthy (1.0)
+            - 0.1–0.5   → degraded (0.6)
+            - > 0.5     → unhealthy (0.2)
+        """
+        if ratio <= 0.1:
+            return 1.0
+        if ratio <= 0.5:
+            return 0.6
+        return 0.2
+
+    @staticmethod
+    def _score_height_drift(drift: int) -> float:
+        """
+        Map height drift in blocks into [0, 1].
+
+            - 0–1 blocks   → healthy (1.0)
+            - 2–5 blocks   → degraded (0.6)
+            - > 5 blocks   → unhealthy (0.2)
+        """
+        d = abs(drift)
+        if d <= 1:
+            return 1.0
+        if d <= 5:
+            return 0.6
+        return 0.2
+
+    @classmethod
+    def score_metrics(cls, metrics: NodeMetrics) -> NodeHealth:
+        """
+        Main scoring entrypoint: NodeMetrics -> NodeHealth.
         """
 
-        if not reachable:
+        # Special case: "no data" → UNKNOWN
+        if metrics.latency_ms is None and metrics.failure_ratio == 0.0 and metrics.height_drift == 0:
             return NodeHealth(
-                reachable=False,
-                block_height=node_height,
-                latency_ms=latency_ms,
-                error_count=error_count,
-                score=0,
+                latency_ms=metrics.latency_ms,
+                failure_ratio=metrics.failure_ratio,
+                height_drift=metrics.height_drift,
+                score=50.0,
+                status="unknown",
             )
 
-        score = NodeHealthScorer.MAX_SCORE
+        latency_score = cls._score_latency(metrics.latency_ms)
+        failure_score = cls._score_failure_ratio(metrics.failure_ratio)
+        height_score = cls._score_height_drift(metrics.height_drift)
 
-        # ---------------------------------------------------------
-        # Latency scoring
-        # ---------------------------------------------------------
-        if latency_ms is None:
-            score -= 20
+        # Simple average; everything in [0,1]
+        composite = (latency_score + failure_score + height_score) / 3.0
+        score = max(cls.MIN_SCORE, min(cls.MAX_SCORE, composite * 100.0))
+
+        # Derive status from score
+        if score >= 80.0:
+            status = "healthy"
+        elif score >= 50.0:
+            status = "degraded"
         else:
-            if latency_ms < 150:
-                pass
-            elif latency_ms < 300:
-                score -= 10
-            elif latency_ms < 600:
-                score -= 25
-            else:
-                score -= 40
-
-        # ---------------------------------------------------------
-        # Block height scoring
-        # ---------------------------------------------------------
-        if node_height is None or network_height is None:
-            score -= 20
-        else:
-            lag = network_height - node_height
-            if lag <= 0:
-                pass
-            elif lag <= 2:
-                score -= 10
-            elif lag <= 5:
-                score -= 25
-            else:
-                score -= 50
-
-        # ---------------------------------------------------------
-        # Error penalty
-        # ---------------------------------------------------------
-        if error_count > 0:
-            score -= min(60, error_count * 10)
-
-        # Clamp to valid bounds
-        score = max(NodeHealthScorer.MIN_SCORE, min(NodeHealthScorer.MAX_SCORE, score))
+            status = "unhealthy"
 
         return NodeHealth(
-            reachable=True,
-            block_height=node_height,
-            latency_ms=latency_ms,
-            error_count=error_count,
+            latency_ms=metrics.latency_ms,
+            failure_ratio=metrics.failure_ratio,
+            height_drift=metrics.height_drift,
             score=score,
+            status=status,
         )
+
+    @classmethod
+    def score_node(
+        cls,
+        reachable: bool,
+        latency_ms: Optional[float],
+        failure_ratio: float,
+        height_drift: int,
+    ) -> NodeHealth:
+        """
+        Legacy convenience: accept raw primitives instead of NodeMetrics.
+
+        If `reachable` is False, we treat the node as very unhealthy.
+        """
+        if not reachable:
+            # Completely unreachable → terrible score.
+            return NodeHealth(
+                latency_ms=None,
+                failure_ratio=1.0,
+                height_drift=height_drift,
+                score=0.0,
+                status="unhealthy",
+            )
+
+        metrics = NodeMetrics(
+            latency_ms=latency_ms,
+            failure_ratio=failure_ratio,
+            height_drift=height_drift,
+        )
+        return cls.score_metrics(metrics)
 
 
 # ---------------------------------------------------------------------------
@@ -205,49 +248,36 @@ class NodeHealthScorer:
 def score_node_health(
     metrics_or_reachable: Union[NodeMetrics, bool],
     latency_ms: Optional[float] | None = None,
-    node_height: Optional[int] | None = None,
-    network_height: Optional[int] | None = None,
-    error_count: int = 0,
+    failure_ratio: float = 0.0,
+    height_drift: int = 0,
 ) -> NodeHealth:
     """
     Convenience wrapper used by tests.
 
-    It is flexible on purpose and supports two call patterns:
+    It supports two call patterns:
 
     1) With NodeMetrics (preferred):
 
-        metrics = NodeMetrics(latency_ms=120, sync_height=1_000_000,
-                              best_height=1_000_000, mempool_tx=5, peers=12)
-        health = score_node_health(metrics, network_height=1_000_002, error_count=0)
+        m = NodeMetrics(latency_ms=200, failure_ratio=0.0, height_drift=0)
+        health = score_node_health(m)
 
-    2) With raw primitives (fallback / legacy):
+    2) With raw primitives (legacy):
 
         health = score_node_health(
-            True,        # reachable
-            120.0,       # latency_ms
-            1_000_000,   # node_height
-            1_000_002,   # network_height
-            0,           # error_count
+            True,              # reachable
+            latency_ms=200.0,
+            failure_ratio=0.1,
+            height_drift=2,
         )
     """
 
-    # Pattern 1: first argument is NodeMetrics
     if isinstance(metrics_or_reachable, NodeMetrics):
-        metrics = metrics_or_reachable
-        return NodeHealthScorer.score_node(
-            reachable=True,  # if we have metrics, node responded
-            latency_ms=metrics.latency_ms,
-            node_height=metrics.sync_height,
-            network_height=network_height,
-            error_count=error_count,
-        )
+        return NodeHealthScorer.score_metrics(metrics_or_reachable)
 
-    # Pattern 2: first argument is bool -> treat as original low-level call
     reachable = bool(metrics_or_reachable)
     return NodeHealthScorer.score_node(
         reachable=reachable,
         latency_ms=latency_ms,
-        node_height=node_height,
-        network_height=network_height,
-        error_count=error_count,
+        failure_ratio=failure_ratio,
+        height_drift=height_drift,
     )
