@@ -77,6 +77,12 @@ class NodeHealth:
         One of: "unknown", "healthy", "degraded", "unhealthy".
     """
 
+    # Class-level constants used by tests and callers
+    UNKNOWN = "unknown"
+    HEALTHY = "healthy"
+    DEGRADED = "degraded"
+    UNHEALTHY = "unhealthy"
+
     latency_ms: Optional[float]
     failure_ratio: float
     height_drift: int
@@ -85,16 +91,16 @@ class NodeHealth:
 
     # Convenience helpers used by tests / callers
     def is_unknown(self) -> bool:
-        return self.status == "unknown"
+        return self.status == self.UNKNOWN
 
     def is_healthy(self) -> bool:
-        return self.status == "healthy"
+        return self.status == self.HEALTHY
 
     def is_degraded(self) -> bool:
-        return self.status == "degraded"
+        return self.status == self.DEGRADED
 
     def is_unhealthy(self) -> bool:
-        return self.status == "unhealthy"
+        return self.status == self.UNHEALTHY
 
 
 # Backwards-compatibility alias if older code imported this name.
@@ -176,13 +182,17 @@ class NodeHealthScorer:
         """
 
         # Special case: "no data" → UNKNOWN
-        if metrics.latency_ms is None and metrics.failure_ratio == 0.0 and metrics.height_drift == 0:
+        if (
+            metrics.latency_ms is None
+            and metrics.failure_ratio == 0.0
+            and metrics.height_drift == 0
+        ):
             return NodeHealth(
                 latency_ms=metrics.latency_ms,
                 failure_ratio=metrics.failure_ratio,
                 height_drift=metrics.height_drift,
                 score=50.0,
-                status="unknown",
+                status=NodeHealth.UNKNOWN,
             )
 
         latency_score = cls._score_latency(metrics.latency_ms)
@@ -195,11 +205,11 @@ class NodeHealthScorer:
 
         # Derive status from score
         if score >= 80.0:
-            status = "healthy"
+            status = NodeHealth.HEALTHY
         elif score >= 50.0:
-            status = "degraded"
+            status = NodeHealth.DEGRADED
         else:
-            status = "unhealthy"
+            status = NodeHealth.UNHEALTHY
 
         return NodeHealth(
             latency_ms=metrics.latency_ms,
@@ -229,7 +239,7 @@ class NodeHealthScorer:
                 failure_ratio=1.0,
                 height_drift=height_drift,
                 score=0.0,
-                status="unhealthy",
+                status=NodeHealth.UNHEALTHY,
             )
 
         metrics = NodeMetrics(
