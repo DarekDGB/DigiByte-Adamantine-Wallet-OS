@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 
 
 class GuardianRole(str, Enum):
@@ -172,3 +172,107 @@ class ApprovalRequest:
         Check if the minimum number of approvals has been reached.
         """
         return self.approvals_count() >= min_required
+
+
+# ---------------------------------------------------------------------------
+# Runtime context + decisions for GuardianAdapter / WalletService
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class ActionContext:
+    """
+    Information about the operation the guardian is evaluating.
+
+    Tests expect at least:
+      - wallet_id
+      - account_id
+      - value
+      - description
+      - meta (dict, default {})
+    """
+
+    action: RuleAction
+    wallet_id: str
+    account_id: str
+    value: int
+
+    # Optional human-readable description shown in the UI
+    description: str = ""
+
+    # Arbitrary extra metadata (asset_id, tags, flags, etc.)
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class GuardianDecision:
+    """
+    Result of a guardian evaluation.
+
+    Tests typically check:
+      - decision.blocked         (bool)
+      - decision.needs_approval  (bool)
+      - decision.context         (ActionContext with correct fields)
+
+    `verdict` uses GuardianVerdict for higher-level UI logic.
+    """
+
+    blocked: bool
+    needs_approval: bool = False
+    reason: Optional[str] = None
+    risk_score: float = 0.0
+    verdict: GuardianVerdict = GuardianVerdict.ALLOW
+    context: Optional[ActionContext] = None
+
+    # -------- Convenience constructors --------
+
+    @classmethod
+    def allow(
+        cls,
+        *,
+        context: Optional[ActionContext] = None,
+        reason: str = "",
+        risk_score: float = 0.0,
+    ) -> "GuardianDecision":
+        return cls(
+            blocked=False,
+            needs_approval=False,
+            reason=reason,
+            risk_score=risk_score,
+            verdict=GuardianVerdict.ALLOW,
+            context=context,
+        )
+
+    @classmethod
+    def require_approval(
+        cls,
+        *,
+        context: Optional[ActionContext] = None,
+        reason: str = "",
+        risk_score: float = 0.0,
+    ) -> "GuardianDecision":
+        return cls(
+            blocked=False,
+            needs_approval=True,
+            reason=reason,
+            risk_score=risk_score,
+            verdict=GuardianVerdict.REQUIRE_APPROVAL,
+            context=context,
+        )
+
+    @classmethod
+    def block(
+        cls,
+        *,
+        context: Optional[ActionContext] = None,
+        reason: str = "",
+        risk_score: float = 1.0,
+    ) -> "GuardianDecision":
+        return cls(
+            blocked=True,
+            needs_approval=False,
+            reason=reason,
+            risk_score=risk_score,
+            verdict=GuardianVerdict.BLOCK,
+            context=context,
+        )
