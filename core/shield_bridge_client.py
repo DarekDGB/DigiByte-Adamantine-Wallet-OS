@@ -1,243 +1,209 @@
 """
-Shield Bridge Client
-====================
+ShieldBridgeClient — high-level adapter between Adamantine Wallet core
+and the DigiByte Quantum Shield stack.
 
-This module is the **glue** between the DigiByte Quantum Shield layers
-(Sentinel, DQSN, ADN, Adaptive Core, QWG) and the Adamantine Wallet.
+This module is a **pure-Python skeleton** for now.  It defines clear,
+typed interfaces so that later we can wire in real network calls to:
 
-It does NOT talk directly to the blockchain or change consensus.
-Its job is to:
+- Sentinel AI v2      (telemetry + anomaly signals)
+- DQSN v2            (distributed confirmation / gossip)
+- ADN v2             (node-side defence)
+- QAC                (quantum-aware classifier)
+- Adaptive Core      (long-term immune memory)
 
-- accept raw metrics / scores from each shield layer,
-- normalise them into a simple 0.0–1.0 health score,
-- attach a coarse status label: OK / WARN / ALERT,
-- expose a single `ShieldSnapshot` object that the wallet / UI / risk
-  engine can consume.
-
-Later, this client can be wired to:
-- Sentinel AI v2 telemetry streams,
-- DQSN v2 distributed confirmations,
-- ADN v2 node-level lockdown signals,
-- Quantum Wallet Guard (QWG),
-- Adaptive Core immune responses.
-
-For now, we keep the implementation intentionally simple and
-self-contained, so it can evolve without breaking anything.
+The rest of the wallet can import these models today without knowing
+whether the shield stack is running locally, remotely, or is disabled.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Dict, Any, Optional
+from typing import Any, Dict, List, Optional
 
 
 # ---------------------------------------------------------------------------
-# Basic status enums / models
+# Data models
 # ---------------------------------------------------------------------------
-
-
-class LayerHealthStatus(str, Enum):
-    """Coarse health status for a single shield layer."""
-
-    OK = "OK"
-    WARN = "WARN"
-    ALERT = "ALERT"
 
 
 @dataclass
-class LayerHealth:
+class ShieldSignal:
     """
-    Normalised health view for a single shield layer.
+    A single signal coming from any shield layer.
 
-    Attributes
-    ----------
-    layer:
-        Human-readable layer name (e.g. "sentinel", "dqsn", "adn").
-    score:
-        Float in [0.0, 1.0]; higher means *more* risk / stress.
-        0.0  -> perfectly calm
-        0.25 -> slightly elevated
-        0.5  -> concerning
-        0.75 -> high risk
-        1.0  -> critical
-    status:
-        Coarse qualitative state derived from the score.
-    details:
-        Optional extra metadata (raw metrics, flags, etc.).
+    Examples:
+        - source = "sentinel"
+          kind   = "mempool_anomaly"
+          risk_score = 0.72
+        - source = "qac"
+          kind   = "quantum_like_pattern"
+          risk_score = 0.93
     """
 
-    layer: str
-    score: float
-    status: LayerHealthStatus
+    source: str
+    kind: str
+    risk_score: float = 0.0
     details: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
-class ShieldSnapshot:
+class ShieldDecision:
     """
-    Aggregated view of all shield layers at a point in time.
+    Aggregated decision coming from the shield stack.
 
-    This is what the wallet / UI will eventually consume.
-
-    Attributes
-    ----------
-    sentinel:
-        Sentinel telemetry / anomaly view.
-    dqsn:
-        Distributed confirmation network view.
-    adn:
-        Node-level lockdown / defence view.
-    adaptive:
-        Adaptive Core / immune-system style score.
-    overall_score:
-        Simple aggregate in [0.0, 1.0] (max of layer scores by default).
-    meta:
-        Optional extra metadata.
+    This is intentionally similar in spirit to GuardianDecision but
+    focused on *network / protocol* risk instead of human approvals.
     """
 
-    sentinel: Optional[LayerHealth] = None
-    dqsn: Optional[LayerHealth] = None
-    adn: Optional[LayerHealth] = None
-    adaptive: Optional[LayerHealth] = None
+    blocked: bool
+    needs_approval: bool
+    risk_score: float
+    reason: str = ""
+    signals: List[ShieldSignal] = field(default_factory=list)
 
-    overall_score: float = 0.0
-    meta: Dict[str, Any] = field(default_factory=dict)
+    @classmethod
+    def allow(cls, *, reason: str = "", risk_score: float = 0.0) -> "ShieldDecision":
+        return cls(
+            blocked=False,
+            needs_approval=False,
+            risk_score=risk_score,
+            reason=reason,
+            signals=[],
+        )
 
-    def max_status(self) -> LayerHealthStatus:
-        """
-        Return the 'worst' status among all layers.
+    @classmethod
+    def require_approval(
+        cls, *, reason: str = "", risk_score: float = 0.0
+    ) -> "ShieldDecision":
+        return cls(
+            blocked=False,
+            needs_approval=True,
+            risk_score=risk_score,
+            reason=reason,
+            signals=[],
+        )
 
-        Ordering: ALERT > WARN > OK
-        """
-        order = {LayerHealthStatus.OK: 0,
-                 LayerHealthStatus.WARN: 1,
-                 LayerHealthStatus.ALERT: 2}
-
-        statuses = [
-            lh.status
-            for lh in (self.sentinel, self.dqsn, self.adn, self.adaptive)
-            if lh is not None
-        ]
-        if not statuses:
-            return LayerHealthStatus.OK
-        return max(statuses, key=lambda s: order[s])
+    @classmethod
+    def block(cls, *, reason: str = "", risk_score: float = 1.0) -> "ShieldDecision":
+        return cls(
+            blocked=True,
+            needs_approval=False,
+            risk_score=risk_score,
+            reason=reason,
+            signals=[],
+        )
 
 
 # ---------------------------------------------------------------------------
-# Shield Bridge client
+# Client skeleton
 # ---------------------------------------------------------------------------
+
+
+@dataclass
+class ShieldBridgeConfig:
+    """
+    Lightweight configuration for the bridge.
+
+    In future we can extend this with URLs, auth tokens or Unix-socket
+    paths for each layer (sentinel / dqsn / qac / adaptive_core).
+    """
+
+    enabled: bool = False
+    sentinel_endpoint: Optional[str] = None
+    dqsn_endpoint: Optional[str] = None
+    qac_endpoint: Optional[str] = None
+    adaptive_core_endpoint: Optional[str] = None
 
 
 class ShieldBridgeClient:
     """
-    High-level adapter that converts raw shield metrics into LayerHealth
-    and ShieldSnapshot objects.
+    High-level facade used by the wallet / node manager.
 
-    In future this may pull directly from:
-      - Sentinel AI v2 metrics streams,
-      - DQSN v2 gossip / confirmations,
-      - ADN v2 node health + lockdown state,
-      - Adaptive Core immune system events.
-
-    For now we expose simple `from_*` helpers that accept already
-    normalised scores or raw data and map them into LayerHealth.
+    IMPORTANT:
+        - Current implementation is **offline / mock only**.
+        - All methods return an "allow" decision so they are SAFE to
+          integrate without changing behaviour.
+        - Real networking / IPC wiring can be added later behind the
+          same interface.
     """
 
-    # ------------------------- utility helpers ------------------------- #
+    def __init__(self, config: Optional[ShieldBridgeConfig] = None) -> None:
+        self.config = config or ShieldBridgeConfig()
 
-    @staticmethod
-    def _normalise_score(raw: float) -> float:
-        """
-        Clamp a raw float into the [0.0, 1.0] range.
+    # ------------------------------------------------------------------ #
+    # Public evaluation methods                                          #
+    # ------------------------------------------------------------------ #
 
-        The caller is expected to pass something that roughly represents
-        a risk score; we simply make sure it doesn't leave the 0–1 range.
-        """
-        if raw < 0.0:
-            return 0.0
-        if raw > 1.0:
-            return 1.0
-        return raw
-
-    @staticmethod
-    def _status_from_score(score: float) -> LayerHealthStatus:
-        """
-        Derive a coarse status from a normalised score.
-        """
-        if score >= 0.75:
-            return LayerHealthStatus.ALERT
-        if score >= 0.35:
-            return LayerHealthStatus.WARN
-        return LayerHealthStatus.OK
-
-    @classmethod
-    def _make_layer(
-        cls,
-        layer: str,
-        raw_score: float,
-        details: Dict[str, Any] | None = None,
-    ) -> LayerHealth:
-        score = cls._normalise_score(raw_score)
-        status = cls._status_from_score(score)
-        return LayerHealth(layer=layer, score=score, status=status,
-                           details=details or {})
-
-    # ------------------------ per-layer builders ----------------------- #
-
-    def from_sentinel(
-        self, *, score: float, details: Dict[str, Any] | None = None
-    ) -> LayerHealth:
-        """
-        Build a LayerHealth view for Sentinel AI v2.
-
-        `score` should be in [0, 1] where higher = more risk.
-        """
-        return self._make_layer("sentinel", score, details)
-
-    def from_dqsn(
-        self, *, score: float, details: Dict[str, Any] | None = None
-    ) -> LayerHealth:
-        """Build a LayerHealth view for DQSN v2."""
-        return self._make_layer("dqsn", score, details)
-
-    def from_adn(
-        self, *, score: float, details: Dict[str, Any] | None = None
-    ) -> LayerHealth:
-        """Build a LayerHealth view for ADN v2."""
-        return self._make_layer("adn", score, details)
-
-    def from_adaptive_core(
-        self, *, score: float, details: Dict[str, Any] | None = None
-    ) -> LayerHealth:
-        """Build a LayerHealth view for Adaptive Core."""
-        return self._make_layer("adaptive_core", score, details)
-
-    # ----------------------- snapshot composition ---------------------- #
-
-    def build_snapshot(
+    def evaluate_send_dgb(
         self,
         *,
-        sentinel: LayerHealth | None = None,
-        dqsn: LayerHealth | None = None,
-        adn: LayerHealth | None = None,
-        adaptive: LayerHealth | None = None,
-        meta: Dict[str, Any] | None = None,
-    ) -> ShieldSnapshot:
+        wallet_id: str,
+        account_id: str,
+        to_address: str,
+        amount_minor: int,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> ShieldDecision:
         """
-        Combine individual layer health objects into a single snapshot.
+        Evaluate a regular DGB send against the shield stack.
 
-        If any layer is None, it is simply omitted from the aggregate.
-        The default overall_score is the max of available layer scores.
+        For now this is a **no-op allow** with a zero risk score so
+        that wiring this into WalletService later will not change
+        existing unit / integration tests.
         """
-        layers = [lh for lh in (sentinel, dqsn, adn, adaptive) if lh is not None]
-        overall = max((lh.score for lh in layers), default=0.0)
+        _ = (wallet_id, account_id, to_address, amount_minor, meta)
+        return ShieldDecision.allow(reason="shield_bridge_mock_allow")
 
-        return ShieldSnapshot(
-            sentinel=sentinel,
-            dqsn=dqsn,
-            adn=adn,
-            adaptive=adaptive,
-            overall_score=overall,
-            meta=meta or {},
-        )
+    def evaluate_mint_dd(
+        self,
+        *,
+        wallet_id: str,
+        account_id: str,
+        amount_units: int,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> ShieldDecision:
+        """
+        Evaluate a DigiDollar mint operation.
+
+        Currently returns an "allow" decision placeholder.
+        """
+        _ = (wallet_id, account_id, amount_units, meta)
+        return ShieldDecision.allow(reason="shield_bridge_mock_allow_dd_mint")
+
+    def evaluate_redeem_dd(
+        self,
+        *,
+        wallet_id: str,
+        account_id: str,
+        amount_units: int,
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> ShieldDecision:
+        """
+        Evaluate a DigiDollar redeem operation.
+
+        Currently returns an "allow" decision placeholder.
+        """
+        _ = (wallet_id, account_id, amount_units, meta)
+        return ShieldDecision.allow(reason="shield_bridge_mock_allow_dd_redeem")
+
+    # ------------------------------------------------------------------ #
+    # Introspection helpers (nice for debugging / future logging)        #
+    # ------------------------------------------------------------------ #
+
+    def is_enabled(self) -> bool:
+        """Return True if the shield bridge is configured as enabled."""
+        return bool(self.config.enabled)
+
+    def describe(self) -> Dict[str, Any]:
+        """
+        Return a serialisable snapshot of the current bridge config.
+
+        This is handy for diagnostics and for exposing a `/status`
+        endpoint later if the wallet embeds an HTTP API.
+        """
+        return {
+            "enabled": self.config.enabled,
+            "sentinel_endpoint": self.config.sentinel_endpoint,
+            "dqsn_endpoint": self.config.dqsn_endpoint,
+            "qac_endpoint": self.config.qac_endpoint,
+            "adaptive_core_endpoint": self.config.adaptive_core_endpoint,
+        }
