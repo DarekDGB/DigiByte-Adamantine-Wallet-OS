@@ -1,30 +1,18 @@
-"""
-WalletService — high-level orchestration for wallet flows.
-
-This module ties together:
-
-  - Guardian adapter (safety / approval logic)
-  - Node backend (local Digi-Mobile node, remote nodes, etc.)
-
-It does NOT do low-level DigiByte transaction building itself. Instead,
-it provides high-level methods that:
-
-  - check Guardian policies
-  - talk to a node client for broadcasting
-  - return clear results for the UI layer
-"""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Dict, Optional
 
-from core.guardian_wallet.models import GuardianDecision as GWGuardianDecision
-
 
 class SendStatus(Enum):
-    """High-level status for a wallet action (send / DD mint / DD redeem)."""
+    """
+    Normalised send status used by higher-level clients.
+
+    NOTE: unit tests for the low-level wallet_service still use the old
+    dict style (`result["status"] == "blocked"`). For backwards
+    compatibility we keep a small adapter in SendResult.__getitem__.
+    """
 
     ALLOWED = auto()
     PENDING_GUARDIAN = auto()
@@ -35,13 +23,8 @@ class SendStatus(Enum):
 @dataclass
 class SendResult:
     """
-    Result object returned by WalletService methods (integration style).
-
-    Integration tests & UI use:
-        result.status        -> SendStatus
-        result.tx_id         -> str | None
-        result.error_message -> str | None
-        result.guardian_decision -> Any
+    High-level result object returned by WalletService in integration
+    tests and real usage.
     """
 
     status: SendStatus
@@ -49,148 +32,167 @@ class SendResult:
     error_message: Optional[str] = None
     guardian_decision: Any = None
 
+    # ------------------------------------------------------------------
+    # Backwards-compat: allow dict-style access used in some tests:
+    #   result["status"] -> "blocked" / "broadcasted" / ...
+    #   result["tx_id"]
+    #   result["error"]
+    # ------------------------------------------------------------------
+    def _status_string(self) -> str:
+        if self.status == SendStatus.ALLOWED:
+            # Old dict API reported successful broadcast as "broadcasted"
+            return "broadcasted"
+        if self.status == SendStatus.PENDING_GUARDIAN:
+            return "needs_approval"
+        if self.status == SendStatus.BLOCKED:
+            return "blocked"
+        return "failed"
 
-@dataclass
+    def __getitem__(self, key: str) -> Any:
+        if key == "status":
+            return self._status_string()
+        if key == "tx_id":
+            return self.tx_id
+        if key == "error":
+            return self.error_message
+        raise KeyError(key)
+
+
 class WalletService:
     """
-    Thin orchestration layer for wallet actions.
+    High-level orchestration for wallet operations.
 
-    - guardian / guardian_adapter: object with methods like
-      `evaluate_send_dgb`, `evaluate_mint_dd`, `evaluate_redeem_dd`.
-    - node_manager: object that can give us a node client.
-
-    The node client API is deliberately simple for tests:
-      - DummyNodeClient: broadcast_tx(tx_dict)
-      - _FakeNodeClient: broadcast_tx(tx_hex_str)
+    This service sits between:
+      * GuardianAdapter / test guardians
+      * Node manager / client (Digi-Mobile, remote node, etc.)
     """
-
-    guardian: Any
-    node_manager: Any
 
     def __init__(
         self,
-        guardian: Any | None = None,
+        guardian: Any = None,
         *,
-        guardian_adapter: Any | None = None,
+        guardian_adapter: Any = None,
         node_manager: Any,
     ) -> None:
-        # Support both parameter names:
-        #   WalletService(guardian=..., node_manager=...)
-        #   WalletService(guardian_adapter=..., node_manager=...)
+        # Older tests pass guardian_adapter=..., newer may use guardian=...
         if guardian is None:
             guardian = guardian_adapter
         self.guardian = guardian
         self.node_manager = node_manager
 
     # ------------------------------------------------------------------
-    # Internal helpers
+    # Node client helper
     # ------------------------------------------------------------------
-
     def _get_node_client(self) -> Any:
-        """Obtain a node client from the node manager."""
-        if hasattr(self.node_manager, "get_best_node"):
-            return self.node_manager.get_best_node()
-        if hasattr(self.node_manager, "get_preferred_node"):
-            return self.node_manager.get_preferred_node()
-        if hasattr(self.node_manager, "client"):
-            return self.node_manager.client
-        raise RuntimeError("Node manager does not expose a node getter or client")
+        mgr = self.node_manager
+        if hasattr(mgr, "get_best_node"):
+            return mgr.get_best_node()
+        if hasattr(mgr, "get_preferred_node"):
+            return mgr.get_preferred_node()
+        if hasattr(mgr, "client"):
+            return mgr.client
+        if hasattr(mgr, "node"):  # DummyNodeManager in tests
+            return mgr.node
+        raise RuntimeError("WalletService: no node client available")
 
+    # ------------------------------------------------------------------
+    # Guardian decision helper – works with both our GuardianDecision
+    # and the DummyDecision used in tests.
+    # ------------------------------------------------------------------
     @staticmethod
     def _interpret_guardian_decision(decision: Any) -> tuple[bool, bool]:
         """
-        Normalise guardian decisions into (blocked, needs_approval).
-
-        Supports:
-          - core.guardian_wallet.models.GuardianDecision
-          - DummyDecision from integration tests (blocked, needs, needs_approval())
+        Return (blocked, needs_approval) from any decision-like object.
         """
-        # Direct GuardianDecision: trust its fields.
-        if isinstance(decision, GWGuardianDecision):
-            return bool(decision.blocked), bool(getattr(decision, "needs_approval", False))
+        if decision is None:
+            return False, False
 
         blocked = bool(getattr(decision, "blocked", False))
+
         needs_flag = getattr(decision, "needs", False)
         needs_attr = getattr(decision, "needs_approval", None)
+
         if callable(needs_attr):
-            needs_method_val = needs_attr()
+            needs_val = bool(needs_attr())
         elif needs_attr is None:
-            needs_method_val = False
+            needs_val = False
         else:
-            needs_method_val = needs_attr
-        needs_approval = bool(needs_flag or needs_method_val)
+            needs_val = bool(needs_attr)
+
+        needs_approval = bool(needs_flag or needs_val)
         return blocked, needs_approval
 
     # ------------------------------------------------------------------
-    # Public API — DGB sends
+    # DGB send
     # ------------------------------------------------------------------
-
     def send_dgb(
         self,
         *,
         wallet_id: str,
         account_id: str,
         # unit-test style arguments:
-        value_dgb: int | None = None,
-        tx_hex: str | None = None,
+        value_dgb: Optional[int] = None,
+        tx_hex: Optional[str] = None,
         description: str = "DGB send",
         # integration-test style arguments:
-        to_address: str | None = None,
-        amount_minor: int | None = None,
-        amount_units: int | None = None,
+        to_address: Optional[str] = None,
+        amount_minor: Optional[int] = None,
+        amount_units: Optional[int] = None,
     ) -> Any:
         """
         Orchestrate a DGB send with Guardian checks.
 
-        Behaviour:
-
-        - If guardian returns our GuardianDecision  → unit-test mode:
-              returns a *dict* {status, tx_id, error, guardian}
-        - Otherwise (DummyDecision / no guardian) → integration mode:
-              returns SendResult with SendStatus.
+        Returns:
+          * dict       – legacy unit-test mode (value_dgb + tx_hex)
+          * SendResult – integration / real-world mode
         """
 
-        # ------------------------------------------------------------------
-        # 1) Guardian pre-check (if any guardian is configured)
-        # ------------------------------------------------------------------
-        decision: Any = None
-        if self.guardian is not None and hasattr(self.guardian, "evaluate_send_dgb"):
-            amount_for_guardian = (
-                value_dgb
-                if value_dgb is not None
-                else amount_minor
-                if amount_minor is not None
-                else amount_units
-                if amount_units is not None
-                else 0
-            )
+        # Decide which flavour of API we are serving.
+        unit_mode = (
+            (tx_hex is not None or value_dgb is not None)
+            and to_address is None
+            and amount_minor is None
+            and amount_units is None
+        )
 
-            # Try the rich signature first; fall back for test doubles that
-            # don't accept keyword arguments.
-            try:
-                decision = self.guardian.evaluate_send_dgb(
-                    wallet_id=wallet_id,
-                    account_id=account_id,
-                    value_dgb=amount_for_guardian,
-                    description=description,
+        # ---------------------- 1) Guardian pre-check -------------------
+        decision: Any = None
+        if self.guardian is not None:
+            if hasattr(self.guardian, "evaluate_send_dgb"):
+                amount_for_guardian = (
+                    value_dgb
+                    if value_dgb is not None
+                    else amount_minor
+                    if amount_minor is not None
+                    else amount_units
+                    if amount_units is not None
+                    else 0
                 )
-            except TypeError:
                 try:
                     decision = self.guardian.evaluate_send_dgb(
-                        wallet_id, account_id, amount_for_guardian
+                        wallet_id=wallet_id,
+                        account_id=account_id,
+                        value_dgb=amount_for_guardian,
+                        description=description,
+                        tx_hex=tx_hex,
                     )
                 except TypeError:
-                    decision = self.guardian.evaluate_send_dgb(wallet_id, account_id)
+                    try:
+                        decision = self.guardian.evaluate_send_dgb(
+                            wallet_id, account_id, amount_for_guardian
+                        )
+                    except TypeError:
+                        decision = self.guardian.evaluate_send_dgb(
+                            wallet_id, account_id
+                        )
+            elif hasattr(self.guardian, "decision"):
+                # DummyGuardianAdapter in integration tests
+                decision = getattr(self.guardian, "decision")
 
-        is_guardian_decision = isinstance(decision, GWGuardianDecision)
-        blocked = False
-        needs_approval = False
-        if decision is not None:
-            blocked, needs_approval = self._interpret_guardian_decision(decision)
+        blocked, needs_approval = self._interpret_guardian_decision(decision)
 
-        # ----------------- UNIT-TEST MODE (dict results) -----------------
-        if is_guardian_decision:
-            # Blocked: never touch the node.
+        # ----------------- 2) Legacy unit-test dict mode ----------------
+        if unit_mode:
             if blocked:
                 return {
                     "status": "blocked",
@@ -198,8 +200,6 @@ class WalletService:
                     "error": None,
                     "guardian": decision,
                 }
-
-            # Needs approval: again, never touch the node.
             if needs_approval:
                 return {
                     "status": "needs_approval",
@@ -208,19 +208,16 @@ class WalletService:
                     "guardian": decision,
                 }
 
-            # Allowed by guardian → call the fake node client using tx_hex.
             node = self._get_node_client()
             try:
-                # Unit tests care only that broadcast was (or wasn't) called.
-                tx_hex_to_use = tx_hex or ""
-                tx_id = node.broadcast_tx(tx_hex_to_use)
+                tx_id = node.broadcast_tx(tx_hex or "")
                 return {
                     "status": "broadcasted",
                     "tx_id": tx_id,
                     "error": None,
                     "guardian": decision,
                 }
-            except Exception as exc:  # pragma: no cover - defensive
+            except Exception as exc:  # pragma: no cover
                 return {
                     "status": "failed",
                     "tx_id": None,
@@ -228,9 +225,7 @@ class WalletService:
                     "guardian": decision,
                 }
 
-        # ---------------- INTEGRATION MODE (SendResult) ------------------
-
-        # Guardian blocked or needs approval in DummyDecision world.
+        # -------------- 3) Integration / real-world mode ----------------
         if blocked:
             return SendResult(
                 status=SendStatus.BLOCKED,
@@ -238,20 +233,18 @@ class WalletService:
                 error_message="Action blocked by Guardian policy.",
                 guardian_decision=decision,
             )
+
         if needs_approval:
             return SendResult(
                 status=SendStatus.PENDING_GUARDIAN,
-                tx_id=None,
-                error_message=None,
                 guardian_decision=decision,
             )
 
-        # Guardian allows → talk to node backend.
         node = self._get_node_client()
 
-        if amount_minor is not None and to_address is not None:
-            # Integration tests expect a dict payload with "amount".
-            tx_payload: Dict[str, Any] = {
+        # DummyNodeClient in tests asserts on "amount" key.
+        if to_address is not None and amount_minor is not None:
+            payload: Dict[str, Any] = {
                 "flow": "send_dgb",
                 "wallet_id": wallet_id,
                 "account_id": account_id,
@@ -260,8 +253,7 @@ class WalletService:
                 "description": description,
             }
         else:
-            # Generic fallback payload.
-            tx_payload = {
+            payload = {
                 "flow": "send_dgb",
                 "wallet_id": wallet_id,
                 "account_id": account_id,
@@ -271,85 +263,85 @@ class WalletService:
             }
 
         try:
-            tx_id = node.broadcast_tx(tx_payload)
+            tx_id = node.broadcast_tx(payload)
             return SendResult(
                 status=SendStatus.ALLOWED,
                 tx_id=tx_id,
-                error_message=None,
                 guardian_decision=decision,
             )
         except Exception as exc:  # pragma: no cover
             return SendResult(
                 status=SendStatus.FAILED,
-                tx_id=None,
                 error_message=str(exc),
                 guardian_decision=decision,
             )
 
     # ------------------------------------------------------------------
-    # Public API — DigiDollar (DD) mint / redeem
+    # DigiDollar mint / redeem
     # ------------------------------------------------------------------
-
     def mint_dd(
         self,
         *,
         wallet_id: str,
         account_id: str,
         amount_units: int,
+        description: str = "Mint DigiDollar",
     ) -> SendResult:
         """
-        High-level helper for DigiDollar mint (DGB -> DD).
-
-        Integration tests expect:
-          - Guardian is consulted
-          - Node receives a broadcast with meta["amount"] == amount_units
-          - tx_id == "tx_fake_123"
+        Mint DigiDollar units with optional Guardian policy enforcement.
         """
-        decision: Any = None
-        if self.guardian is not None and hasattr(self.guardian, "evaluate_mint_dd"):
-            decision = self.guardian.evaluate_mint_dd(
-                wallet_id=wallet_id,
-                account_id=account_id,
-                amount_units=amount_units,
-            )
-            blocked, needs_approval = self._interpret_guardian_decision(decision)
 
-            if blocked:
-                return SendResult(
-                    status=SendStatus.BLOCKED,
-                    tx_id=None,
-                    error_message="Mint blocked by Guardian policy.",
-                    guardian_decision=decision,
-                )
-            if needs_approval:
-                return SendResult(
-                    status=SendStatus.PENDING_GUARDIAN,
-                    tx_id=None,
-                    error_message=None,
-                    guardian_decision=decision,
-                )
+        decision: Any = None
+        if self.guardian is not None:
+            if hasattr(self.guardian, "evaluate_mint_dd"):
+                try:
+                    decision = self.guardian.evaluate_mint_dd(
+                        wallet_id=wallet_id,
+                        account_id=account_id,
+                        amount_units=amount_units,
+                        description=description,
+                    )
+                except TypeError:
+                    decision = self.guardian.evaluate_mint_dd(
+                        wallet_id, account_id, amount_units
+                    )
+            elif hasattr(self.guardian, "decision"):
+                decision = getattr(self.guardian, "decision")
+
+        blocked, needs_approval = self._interpret_guardian_decision(decision)
+
+        if blocked:
+            return SendResult(
+                status=SendStatus.BLOCKED,
+                error_message="Mint blocked by Guardian policy.",
+                guardian_decision=decision,
+            )
+
+        if needs_approval:
+            return SendResult(
+                status=SendStatus.PENDING_GUARDIAN,
+                guardian_decision=decision,
+            )
 
         node = self._get_node_client()
-        tx_payload: Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "flow": "dd_mint",
             "wallet_id": wallet_id,
             "account_id": account_id,
-            # tests look for this exact key
             "amount": amount_units,
+            "description": description,
         }
 
         try:
-            tx_id = node.broadcast_tx(tx_payload)
+            tx_id = node.broadcast_tx(payload)
             return SendResult(
                 status=SendStatus.ALLOWED,
                 tx_id=tx_id,
-                error_message=None,
                 guardian_decision=decision,
             )
         except Exception as exc:  # pragma: no cover
             return SendResult(
                 status=SendStatus.FAILED,
-                tx_id=None,
                 error_message=str(exc),
                 guardian_decision=decision,
             )
@@ -360,57 +352,63 @@ class WalletService:
         wallet_id: str,
         account_id: str,
         amount_units: int,
+        description: str = "Redeem DigiDollar",
     ) -> SendResult:
         """
-        High-level helper for DigiDollar redeem (DD -> DGB).
-
-        Tests mainly verify the BLOCKED behaviour, but we keep full flow
-        for symmetry with `mint_dd`.
+        Redeem DigiDollar units with Guardian policy enforcement.
         """
-        decision: Any = None
-        if self.guardian is not None and hasattr(self.guardian, "evaluate_redeem_dd"):
-            decision = self.guardian.evaluate_redeem_dd(
-                wallet_id=wallet_id,
-                account_id=account_id,
-                amount_units=amount_units,
-            )
-            blocked, needs_approval = self._interpret_guardian_decision(decision)
 
-            if blocked:
-                return SendResult(
-                    status=SendStatus.BLOCKED,
-                    tx_id=None,
-                    error_message="Redeem blocked by Guardian policy.",
-                    guardian_decision=decision,
-                )
-            if needs_approval:
-                return SendResult(
-                    status=SendStatus.PENDING_GUARDIAN,
-                    tx_id=None,
-                    error_message=None,
-                    guardian_decision=decision,
-                )
+        decision: Any = None
+        if self.guardian is not None:
+            if hasattr(self.guardian, "evaluate_redeem_dd"):
+                try:
+                    decision = self.guardian.evaluate_redeem_dd(
+                        wallet_id=wallet_id,
+                        account_id=account_id,
+                        amount_units=amount_units,
+                        description=description,
+                    )
+                except TypeError:
+                    decision = self.guardian.evaluate_redeem_dd(
+                        wallet_id, account_id, amount_units
+                    )
+            elif hasattr(self.guardian, "decision"):
+                decision = getattr(self.guardian, "decision")
+
+        blocked, needs_approval = self._interpret_guardian_decision(decision)
+
+        if blocked:
+            return SendResult(
+                status=SendStatus.BLOCKED,
+                error_message="Redeem blocked by Guardian policy.",
+                guardian_decision=decision,
+            )
+
+        if needs_approval:
+            return SendResult(
+                status=SendStatus.PENDING_GUARDIAN,
+                guardian_decision=decision,
+            )
 
         node = self._get_node_client()
-        tx_payload: Dict[str, Any] = {
+        payload: Dict[str, Any] = {
             "flow": "dd_redeem",
             "wallet_id": wallet_id,
             "account_id": account_id,
             "amount": amount_units,
+            "description": description,
         }
 
         try:
-            tx_id = node.broadcast_tx(tx_payload)
+            tx_id = node.broadcast_tx(payload)
             return SendResult(
                 status=SendStatus.ALLOWED,
                 tx_id=tx_id,
-                error_message=None,
                 guardian_decision=decision,
             )
         except Exception as exc:  # pragma: no cover
             return SendResult(
                 status=SendStatus.FAILED,
-                tx_id=None,
                 error_message=str(exc),
                 guardian_decision=decision,
             )
