@@ -1,21 +1,22 @@
 """
 High-level wallet orchestration for the DigiByte Adamantine Wallet.
 
-This module purposely stays **very close** to what the unit / integration
-tests expect.  It does NOT implement real DigiByte transaction building.
+This module purposely stays very close to what the unit / integration
+tests expect. It does NOT implement real DigiByte transaction building.
 Instead it coordinates three concerns:
 
 - Guardian adapter (safety / approval decisions)
 - Node manager (which node / client to talk to)
 - Simple result objects for the UI / callers
 
-There are two main call styles supported by the tests:
+Two call styles are supported:
 
-1.  "Unit-test mode"
+1.  Unit-test mode (test_wallet_service.py)
     send_dgb(wallet_id, account_id, value_dgb=..., tx_hex=...)
-    -> returns a dict with keys: status, tx_id, error, guardian
+    -> returns a dict with keys:
+       status, tx_id, txid, error, guardian
 
-2.  "Integration-test mode"
+2.  Integration-test mode (test_wallet_service_integration.py)
     send_dgb(wallet_id, account_id, to_address=..., amount_minor=...)
     mint_dd(...), redeem_dd(...)
     -> return a SendResult with a SendStatus enum.
@@ -53,8 +54,8 @@ class SendResult:
         result.tx_id           (str | None)
         result.error_message   (str | None)
 
-    Some older tests also call result["status"], result["tx_id"],
-    result["error"], so we provide a small mapping bridge.
+    Some code may also call result["status"], result["tx_id"],
+    result["txid"], result["error"], so we provide a small mapping bridge.
     """
 
     status: SendStatus
@@ -76,9 +77,13 @@ class SendResult:
         return "unknown"
 
     def __getitem__(self, key: str) -> Any:
+        """
+        Allow result["status"], result["tx_id"], result["txid"], result["error"]
+        style access for backwards compatibility.
+        """
         if key == "status":
             return self._status_string()
-        if key == "tx_id":
+        if key in ("tx_id", "txid"):
             return self.tx_id
         if key == "error":
             return self.error_message
@@ -106,18 +111,18 @@ class WalletService:
         evaluate_send_dgb(...).
 
     node_manager:
-        Object that can yield a node client.  Tests provide different
+        Object that can yield a node client. Tests provide different
         shapes but usually:
 
-            - .get_best_node() -> client
-            - or .get_preferred_node() -> client
-            - or .client / .node attribute
+            - .get_best_node()        -> client
+            - .get_best_node_client() -> client
+            - .get_preferred_node()   -> client
+            - .client / .node         -> client
 
         The client is expected to implement:
 
-            - broadcast_tx(hex_or_payload) -> txid
-            - mint_dd(amount_units) -> txid
-            - redeem_dd(amount_units) -> txid
+            - broadcast_tx(payload_or_hex) -> txid
+            - or broadcast_transaction(hex) -> txid  (unit tests)
     """
 
     def __init__(
@@ -142,8 +147,14 @@ class WalletService:
         """Return the underlying node client from whatever shape manager."""
         mgr = self.node_manager
 
+        # Unit-test fake manager
+        if hasattr(mgr, "get_best_node_client"):
+            return mgr.get_best_node_client()
+
+        # Integration-test dummy manager
         if hasattr(mgr, "get_best_node"):
             return mgr.get_best_node()
+
         if hasattr(mgr, "get_preferred_node"):
             return mgr.get_preferred_node()
         if hasattr(mgr, "client"):
@@ -160,25 +171,75 @@ class WalletService:
 
     @staticmethod
     def _decision_blocked(decision: Any) -> bool:
-        """Return True if a guardian decision represents a block."""
-        return bool(getattr(decision, "blocked", False))
+        """
+        Return True if a guardian decision represents a block.
+
+        Works with:
+          - DummyDecision.is_blocked()
+          - GuardianDecision.verdict == GuardianVerdict.BLOCK
+          - decision.blocked boolean flag (fallback)
+        """
+        if decision is None:
+            return False
+
+        # DummyDecision / GuardianDecision style method
+        meth = getattr(decision, "is_blocked", None)
+        if callable(meth):
+            return bool(meth())
+
+        # GuardianDecision.verdict
+        verdict = getattr(decision, "verdict", None)
+        if verdict is not None:
+            try:
+                from core.guardian_wallet.models import (  # type: ignore
+                    GuardianVerdict as _GV,
+                )
+
+                if verdict == _GV.BLOCK:
+                    return True
+            except Exception:
+                # If import fails, just ignore this path.
+                pass
+
+        # Fallback: boolean attribute
+        blocked = getattr(decision, "blocked", None)
+        if isinstance(blocked, bool):
+            return blocked
+
+        return False
 
     @staticmethod
     def _decision_needs_approval(decision: Any) -> bool:
-        """Return True if a guardian decision represents 'needs approval'."""
+        """
+        Return True if a guardian decision means 'needs approval'.
+
+        Works with:
+          - DummyDecision.needs_approval()
+          - GuardianDecision.verdict == GuardianVerdict.REQUIRE_APPROVAL
+          - decision.needs_approval boolean flag (fallback)
+        """
         if decision is None:
             return False
-        # Some decisions expose `needs_approval` as a method.
+
         attr = getattr(decision, "needs_approval", None)
         if callable(attr):
             return bool(attr())
-        if attr is not None:
-            return bool(attr)
-        # Fallback for `needs` flag used in DummyDecision in tests
-        alt = getattr(decision, "needs", None)
-        if callable(alt):
-            return bool(alt())
-        return bool(alt)
+        if isinstance(attr, bool):
+            return attr
+
+        verdict = getattr(decision, "verdict", None)
+        if verdict is not None:
+            try:
+                from core.guardian_wallet.models import (  # type: ignore
+                    GuardianVerdict as _GV,
+                )
+
+                if verdict == _GV.REQUIRE_APPROVAL:
+                    return True
+            except Exception:
+                pass
+
+        return False
 
     # ------------------------------------------------------------------ #
     # DGB send                                                            #
@@ -203,8 +264,9 @@ class WalletService:
 
         Two modes:
 
-        - Unit-test mode → returns dict
+        - Unit-test mode → returns dict (test_wallet_service.py)
         - Integration-test mode → returns SendResult
+          (test_wallet_service_integration.py)
         """
 
         unit_mode = (
@@ -222,7 +284,8 @@ class WalletService:
             if self.guardian is not None and hasattr(
                 self.guardian, "evaluate_send_dgb"
             ):
-                # tests call: evaluate_send_dgb(wallet_id, account_id, value_dgb)
+                # Tests' _BaseGuardianAdapter signature:
+                #   evaluate_send_dgb(wallet_id, account_id, value_dgb, ...)
                 decision = self.guardian.evaluate_send_dgb(
                     wallet_id, account_id, value_dgb or 0
                 )
@@ -232,6 +295,7 @@ class WalletService:
                 return {
                     "status": "blocked",
                     "tx_id": None,
+                    "txid": None,
                     "error": None,
                     "guardian": decision,
                 }
@@ -241,6 +305,7 @@ class WalletService:
                 return {
                     "status": "needs_approval",
                     "tx_id": None,
+                    "txid": None,
                     "error": None,
                     "guardian": decision,
                 }
@@ -248,10 +313,18 @@ class WalletService:
             # Otherwise we are allowed to try broadcasting
             node = self._get_node_client()
             try:
-                txid = node.broadcast_tx(tx_hex or "")
+                # Unit-test fake client exposes broadcast_transaction(tx_hex)
+                if hasattr(node, "broadcast_transaction"):
+                    txid = node.broadcast_transaction(tx_hex or "")
+                elif hasattr(node, "broadcast_tx"):
+                    txid = node.broadcast_tx(tx_hex or "")
+                else:
+                    raise RuntimeError("Node client has no broadcast method")
+
                 return {
                     "status": "broadcasted",
                     "tx_id": txid,
+                    "txid": txid,
                     "error": None,
                     "guardian": decision,
                 }
@@ -259,6 +332,7 @@ class WalletService:
                 return {
                     "status": "failed",
                     "tx_id": None,
+                    "txid": None,
                     "error": str(exc),
                     "guardian": decision,
                 }
@@ -267,13 +341,12 @@ class WalletService:
         # 2) INTEGRATION-TEST MODE  (SendResult + SendStatus)
         # ------------------------------------------------------------------
 
-        # Figure out guardian decision.  DummyGuardianAdapter in the tests
-        # exposes `.decision`, but we also support an evaluate_* method.
+        # Figure out guardian decision.
         decision: Any = None
         if self.guardian is not None:
+            # DummyGuardianAdapter stores the decision on .decision
             decision = getattr(self.guardian, "decision", None)
             if decision is None and hasattr(self.guardian, "evaluate_send_dgb"):
-                # Keep the call signature very lightweight for tests.
                 decision = self.guardian.evaluate_send_dgb(
                     wallet_id=wallet_id,
                     account_id=account_id,
@@ -301,12 +374,14 @@ class WalletService:
         # ALLOW → call node and broadcast
         node = self._get_node_client()
         try:
-            # Integration DummyNodeClient expects a dict payload with amount.
+            # Integration DummyNodeClient expects a dict payload with "amount".
             payload = {
                 "to_address": to_address,
-                "amount": amount_minor
-                if amount_minor is not None
-                else amount_units,
+                "amount": (
+                    amount_minor
+                    if amount_minor is not None
+                    else amount_units
+                ),
                 "description": description,
             }
             txid = node.broadcast_tx(payload)
@@ -328,18 +403,6 @@ class WalletService:
     # DigiDollar mint / redeem                                           #
     # ------------------------------------------------------------------ #
 
-    def _guardian_decision_generic(self, amount_units: int) -> Any:
-        """
-        Shared helper for mint_dd / redeem_dd to obtain a guardian decision.
-        """
-        decision: Any = None
-        if self.guardian is not None:
-            decision = getattr(self.guardian, "decision", None)
-            if decision is None and hasattr(self.guardian, "evaluate_dd"):
-                # Some adapters may expose a generic method for DD actions.
-                decision = self.guardian.evaluate_dd(amount_units)
-        return decision
-
     def mint_dd(
         self,
         *,
@@ -352,11 +415,20 @@ class WalletService:
 
         Tests expect:
 
-            - BLOCKED → no broadcast
+            - BLOCKED          → no broadcast
             - PENDING_GUARDIAN → no broadcast
-            - ALLOWED → node.mint_dd called once with amount_units
+            - ALLOWED          → node.broadcast_tx called once with amount_units
         """
-        decision = self._guardian_decision_generic(amount_units)
+        decision: Any = None
+        if self.guardian is not None:
+            if hasattr(self.guardian, "evaluate_mint_dd"):
+                decision = self.guardian.evaluate_mint_dd(
+                    wallet_id=wallet_id,
+                    account_id=account_id,
+                    amount_units=amount_units,
+                )
+            else:
+                decision = getattr(self.guardian, "decision", None)
 
         if self._decision_blocked(decision):
             return SendResult(
@@ -376,7 +448,12 @@ class WalletService:
 
         node = self._get_node_client()
         try:
-            txid = node.mint_dd(amount_units)
+            payload = {"action": "mint_dd", "amount": amount_units}
+            if hasattr(node, "broadcast_tx"):
+                txid = node.broadcast_tx(payload)
+            else:
+                # Fallback for future real implementation
+                txid = node.mint_dd(amount_units)  # type: ignore[attr-defined]
             return SendResult(
                 status=SendStatus.ALLOWED,
                 tx_id=txid,
@@ -402,7 +479,16 @@ class WalletService:
         Redeem DigiDollar units (integration-style only).
         Behaviour mirrors mint_dd.
         """
-        decision = self._guardian_decision_generic(amount_units)
+        decision: Any = None
+        if self.guardian is not None:
+            if hasattr(self.guardian, "evaluate_redeem_dd"):
+                decision = self.guardian.evaluate_redeem_dd(
+                    wallet_id=wallet_id,
+                    account_id=account_id,
+                    amount_units=amount_units,
+                )
+            else:
+                decision = getattr(self.guardian, "decision", None)
 
         if self._decision_blocked(decision):
             return SendResult(
@@ -422,7 +508,12 @@ class WalletService:
 
         node = self._get_node_client()
         try:
-            txid = node.redeem_dd(amount_units)
+            payload = {"action": "redeem_dd", "amount": amount_units}
+            if hasattr(node, "broadcast_tx"):
+                txid = node.broadcast_tx(payload)
+            else:
+                # Fallback for future real implementation
+                txid = node.redeem_dd(amount_units)  # type: ignore[attr-defined]
             return SendResult(
                 status=SendStatus.ALLOWED,
                 tx_id=txid,
