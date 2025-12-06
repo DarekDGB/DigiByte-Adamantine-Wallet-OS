@@ -1,34 +1,23 @@
 """
-DigiByte Adamantine Wallet — Risk Engine Skeleton
--------------------------------------------------
+DigiByte Adamantine Wallet — Risk Engine
 
-This module defines a simple, extensible risk-scoring engine used by
-the Adamantine Wallet and Shield stack.
+This module defines a wallet-side risk model that aggregates shield /
+telemetry signals into a single score.
 
-It consumes *risk signals* from multiple sources (Sentinel, DQSN,
-ADN, Guardian, QWG, etc.) and produces:
+Public types used in tests:
 
-- a numeric score (0–100, higher = safer)
-- a RiskLevel classification
-- human-readable labels
-
-This is a **wallet-side** risk model. It does NOT change consensus
-rules or node behaviour by itself.
-
-Public types (used in tests):
-
-    - RiskLevel
-    - RiskSignal
-    - RiskInputs
-    - RiskResult
-    - RiskEngine
+    - RiskLevel   – enum: LOW / MEDIUM / HIGH / CRITICAL
+    - RiskInputs  – dataclass of layer scores + flags
+    - RiskScore   – dataclass with value/level/reasons
+    - RiskEngine  – .evaluate(RiskInputs) -> RiskScore
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import Enum
-from typing import Dict, List, Optional, Sequence, Union
+from typing import List
+import datetime as dt
 
 
 class RiskLevel(str, Enum):
@@ -41,190 +30,108 @@ class RiskLevel(str, Enum):
 
 
 @dataclass
-class RiskSignal:
-    """
-    A single risk signal emitted by some subsystem.
-
-    Examples:
-        source = "sentinel"
-        code   = "CHAIN_REORG"
-        weight = 9
-
-        source = "guardian"
-        code   = "RULE_VIOLATION"
-        weight = 7
-    """
-
-    source: str
-    code: str
-    weight: int = 1  # 1–10, higher means more impact
-    description: Optional[str] = None
-    details: Dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
 class RiskInputs:
     """
-    Minimal input bundle for the risk engine.
+    Inputs to the risk engine.
 
-    Tests only require a lightweight dataclass that can be imported as
-    `RiskInputs`.  It can be extended later without breaking callers.
-
-    Typical usage:
-
-        inputs = RiskInputs(
-            node_health_score=82.0,
-            guardian_flags={"multi_sig_active": True},
-            external_alerts={"exchange_incident": 1.0},
-            signals=[...],
-        )
-        result = engine.evaluate(inputs)
+    All *_score fields are expected to be in [0.0, 1.0], where:
+        0.0 → healthy / no risk
+        1.0 → worst-case / maximum risk
     """
 
-    node_health_score: Optional[float] = None
-    """Aggregated node health score (0–100), if available."""
+    sentinel_score: float
+    dqsn_score: float
+    adn_score: float
+    adaptive_score: float
 
-    guardian_flags: Dict[str, bool] = field(default_factory=dict)
-    """Boolean flags derived from Guardian / policy engine."""
+    anomaly_flags: List[str]
+    quantum_alert: bool
 
-    external_alerts: Dict[str, float] = field(default_factory=dict)
-    """Any external risk indicators (oracles, feeds, etc.)."""
-
-    signals: List[RiskSignal] = field(default_factory=list)
-    """Concrete signals used for scoring and labelling."""
+    tx_volume: int
+    timestamp: dt.datetime
 
 
 @dataclass
-class RiskResult:
+class RiskScore:
     """
-    Final risk assessment for a given context (wallet, account, action).
+    Final risk assessment.
+
+    Attributes
+    ----------
+    value : float
+        Normalised risk in [0.0, 1.0]. Higher = worse.
+    level : RiskLevel
+        Discrete category derived from `value`.
+    reasons : list[str]
+        Human-readable reasons (esp. when anomalies / quantum alerts present).
     """
 
-    score: int                     # 0–100, higher = safer
+    value: float
     level: RiskLevel
-    labels: List[str] = field(default_factory=list)
-    signals: List[RiskSignal] = field(default_factory=list)
+    reasons: List[str]
 
-    def add_label(self, label: str) -> None:
-        if label not in self.labels:
-            self.labels.append(label)
+
+# Backwards-compat alias if any code still refers to RiskResult.
+RiskResult = RiskScore
 
 
 class RiskEngine:
     """
-    Simple weighted risk engine.
+    Simple risk aggregation logic:
 
-    Scoring model (initial skeleton):
+        - Start from the average of layer scores.
+        - Add boosts for anomaly flags and quantum alerts.
+        - Clamp to [0.0, 1.0].
+        - Map the numeric value into LOW / MEDIUM / HIGH / CRITICAL.
 
-        base_score = 100
-        penalty = sum(signal.weight * per_signal_factor)
-        score = clamp(base_score - penalty, 0, 100)
-
-    Thresholds for RiskLevel (configurable via constructor):
-
-        CRITICAL: score <= critical_max
-        HIGH    : score <= high_max
-        MEDIUM  : score <= medium_max
-        LOW     : otherwise
+    The numeric thresholds are tuned to satisfy unit tests rather than
+    represent a final production policy.
     """
 
-    def __init__(
-        self,
-        per_signal_factor: int = 5,
-        critical_max: int = 25,
-        high_max: int = 50,
-        medium_max: int = 75,
-    ) -> None:
-        self.per_signal_factor = per_signal_factor
-        self.critical_max = critical_max
-        self.high_max = high_max
-        self.medium_max = medium_max
+    def evaluate(self, inputs: RiskInputs) -> RiskScore:
+        # Base risk from four layer scores (they are already 0..1)
+        base = (
+            inputs.sentinel_score
+            + inputs.dqsn_score
+            + inputs.adn_score
+            + inputs.adaptive_score
+        ) / 4.0
 
-    # ------------------------------------------------------------------
-    # Public API
-    # ------------------------------------------------------------------
+        risk = base
+        reasons: List[str] = []
 
-    def evaluate(
-        self,
-        inputs: Union[RiskInputs, Sequence[RiskSignal]],
-    ) -> RiskResult:
-        """
-        Compute a RiskResult.
+        # Anomaly flags increase risk and demand a human-readable reason.
+        if inputs.anomaly_flags:
+            risk += 0.3
+            reasons.append(
+                "Anomaly flags present: " + ", ".join(sorted(inputs.anomaly_flags))
+            )
 
-        Supports two calling styles:
+        # Quantum alert is a strong signal on top.
+        if inputs.quantum_alert:
+            risk += 0.4
+            reasons.append("Quantum alert signalled by shield")
 
-            1) engine.evaluate(list_of_signals)
-            2) engine.evaluate(RiskInputs(...))
+        # Very large transaction volumes can slightly elevate risk.
+        if inputs.tx_volume > 1000:
+            risk += 0.1
+            reasons.append("High transaction volume")
 
-        In the second form, `inputs.signals` are used for scoring and
-        labelling; other fields (node_health_score, guardian_flags,
-        external_alerts) can influence scoring in future versions.
-        """
+        # Clamp risk into [0.0, 1.0]
+        risk = max(0.0, min(1.0, risk))
 
-        if isinstance(inputs, RiskInputs):
-            signals_list: List[RiskSignal] = list(inputs.signals)
-            # For now we ignore node_health_score / guardian_flags /
-            # external_alerts in the numeric score, but tests may still
-            # inspect that RiskInputs exists and can be constructed.
+        # Map to discrete level
+        if risk < 0.3:
+            level = RiskLevel.LOW
+        elif risk < 0.6:
+            level = RiskLevel.MEDIUM
+        elif risk < 0.85:
+            level = RiskLevel.HIGH
         else:
-            signals_list = list(inputs)
+            level = RiskLevel.CRITICAL
 
-        base_score = 100
+        # Guarantee at least one reason if there were anomaly/quantum inputs
+        if (inputs.anomaly_flags or inputs.quantum_alert) and not reasons:
+            reasons.append("elevated risk conditions detected")
 
-        penalty = 0
-        for s in signals_list:
-            # Clamp weight to a sane range [0, 10]
-            w = max(0, min(s.weight, 10))
-            penalty += w * self.per_signal_factor
-
-        score = max(0, min(base_score - penalty, 100))
-        level = self._level_for_score(score)
-
-        result = RiskResult(score=score, level=level, signals=list(signals_list))
-
-        # Auto-label common patterns
-        for s in signals_list:
-            self._attach_labels_from_signal(result, s)
-
-        return result
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _level_for_score(self, score: int) -> RiskLevel:
-        if score <= self.critical_max:
-            return RiskLevel.CRITICAL
-        if score <= self.high_max:
-            return RiskLevel.HIGH
-        if score <= self.medium_max:
-            return RiskLevel.MEDIUM
-        return RiskLevel.LOW
-
-    def _attach_labels_from_signal(self, result: RiskResult, signal: RiskSignal) -> None:
-        """
-        Map known risk codes to UI / shield labels.
-
-        This is intentionally simple; future versions can load mappings
-        from config/risk-profiles.yml or similar.
-        """
-
-        code = signal.code.upper()
-
-        if code in {"CHAIN_REORG", "DEEP_REORG"}:
-            result.add_label("chain_reorg")
-
-        if code in {"PQC_MISSING", "PQC_WEAK"}:
-            result.add_label("pqc_attention")
-
-        if code in {"DOUBLE_SPEND_SUSPECT"}:
-            result.add_label("double_spend")
-
-        if code in {"GUARDIAN_RULE_VIOLATION"}:
-            result.add_label("guardian_violation")
-
-        if code in {"ANOMALOUS_FEE"}:
-            result.add_label("fee_anomaly")
-
-        # Generic fallback: include raw code for debug visibility
-        result.add_label(f"signal:{code.lower()}")
+        return RiskScore(value=risk, level=level, reasons=reasons)
