@@ -1,113 +1,282 @@
 # Shield Bridge — QAC API (qac-api.md)
 
-Status: **draft v0.1 – internal skeleton**
+Status: **draft v0.2 – internal skeleton**
 
-This document defines how Adamantine queries the
-**Quantum Adaptive Confirmation (QAC)** layer via the Shield Bridge.
+This document defines how the Adamantine Wallet talks to the
+**Quantum Assurance Controller (QAC)** through the Shield Bridge.
 
-QAC analyses confirmation patterns across multiple nodes / regions to
-detect **unusual confirmation behaviour** that might signal advanced
-attacks or partial forks.
+QAC is the **post‑quantum migration brain** of the shield:
+
+- tracks DigiByte's PQC migration roadmap and local support,
+- aggregates capability signals from PQC containers and nodes,
+- recommends **safe default algorithms** and **fallback paths**,
+- raises **early‑warning alerts** for emerging quantum‑class threats.
+
+Adamantine must treat QAC as:
+
+- *advisory* for everyday algorithm choices, and
+- *authoritative* for hard **"do not use this algorithm"** bans once
+  confirmed by core security processes.
 
 ---
 
 ## 1. Purpose
 
-Guardian & Risk Engine need a **smarter notion of confirmation** than
-“number of blocks” only.
+The QAC API lets Adamantine:
 
-QAC tells us:
-
-- how “healthy” confirmations are for a given TX,
-- whether some regions / nodes disagree,
-- whether confirmation timing looks abnormal.
+1. Discover **what PQC algorithms and key types** are considered safe
+   *right now* for different purposes (wallet keys, guardians, DD, etc.).
+2. Understand the current **migration phase**:
+   - classical‑only,
+   - hybrid (classical + PQC),
+   - PQC‑preferred, etc.
+3. Receive **urgent advisories / bans** when:
+   - an algorithm is downgraded,
+   - a parameter set is deprecated,
+   - or emergency rotation is recommended.
 
 ---
 
-## 2. Endpoint: /v1/tx-confirmation
+## 2. Common Concepts
+
+- **Key domain**  
+  High‑level purpose of a key or credential:
+  - `user_wallet`,
+  - `guardian_channel`,
+  - `node_auth`,
+  - `dd_contract`,
+  - etc.
+
+- **Algo family**  
+  e.g. `ecdsa`, `ed25519`, `ml-kem`, `ml-dsa`, `hash-based`.
+
+- **Posture**  
+  QAC's qualitative view:
+  - `experimental`,
+  - `recommended`,
+  - `legacy_only`,
+  - `banned`.
+
+---
+
+## 3. Endpoint: /v1/readiness
+
+High‑level view of global PQC readiness.
 
 ```http
-GET /v1/tx-confirmation?txid={txid}
+GET /v1/readiness
 ```
 
 ### Example Response
 
 ```json
 {
-  "txid": "abc123...",
-  "seen_by_nodes": 18,
-  "first_seen_at": "2025-12-02T13:00:00Z",
-  "confirmations": 3,
+  "network_phase": "hybrid-preferred",
+  "valid_for_seconds": 600,
 
-  "confidence": {
-    "level": "high",         
-    "score": 0.96,
-    "reasons": [
-      "broad_node_agreement",
-      "normal_confirmation_timing"
-    ]
-  },
+  "key_domains": [
+    {
+      "domain": "user_wallet",
+      "preferred_algorithms": ["ecdsa-secp256k1", "ml-dsa-65"],
+      "fallback_algorithms": ["ecdsa-secp256k1"],
+      "posture": "recommended"
+    },
+    {
+      "domain": "guardian_channel",
+      "preferred_algorithms": ["ml-kem-768", "ml-dsa-65"],
+      "fallback_algorithms": ["rsa-3072"],
+      "posture": "recommended"
+    },
+    {
+      "domain": "node_auth",
+      "preferred_algorithms": ["ml-kem-1024"],
+      "fallback_algorithms": [],
+      "posture": "experimental"
+    }
+  ],
 
-  "disagreement": {
-    "has_disagreement": false,
-    "disagreement_score": 0.0
-  },
-
-  "timing": {
-    "expected_confirmation_time_s": 600,
-    "actual_first_confirmation_time_s": 580,
-    "timing_anomaly_score": 0.05
-  },
-
-  "timestamp": "2025-12-02T13:35:00Z"
+  "notes": [
+    "Hybrid signatures for user wallets are recommended.",
+    "Guardian channels should prefer PQC KEM + PQC signatures."
+  ]
 }
 ```
 
-Key fields for Guardian:
+Adamantine uses this to:
 
-- `confidence.level`  – `"low" | "medium" | "high"`
-- `disagreement.has_disagreement`
-- `timing.timing_anomaly_score`
-
-QAC can also be used for **inbound** TXs (incoming payments) to decide
-when to show them as “safe” in UI.
+- choose defaults when creating new keys,
+- annotate UI with migration status,
+- warn when a user selects weaker options.
 
 ---
 
-## 3. Endpoint: /v1/batch-tx-confirmation (optional)
+## 4. Endpoint: /v1/algorithms
 
-For performance, the wallet may query multiple TXs at once:
+Detailed catalogue of supported algorithms and QAC posture.
 
 ```http
-POST /v1/batch-tx-confirmation
+GET /v1/algorithms
+```
+
+### Example Response
+
+```json
+{
+  "algorithms": [
+    {
+      "id": "ecdsa-secp256k1",
+      "family": "ecdsa",
+      "category": "classical",
+      "posture": "legacy_only",
+      "min_key_bits": 256,
+      "notes": ["Allowed only in hybrid or for backwards compatibility."]
+    },
+    {
+      "id": "ml-dsa-65",
+      "family": "ml-dsa",
+      "category": "pqc-signature",
+      "posture": "recommended",
+      "min_key_bits": 256,
+      "notes": ["Preferred PQC signature once available on-chain."]
+    },
+    {
+      "id": "ml-kem-768",
+      "family": "ml-kem",
+      "category": "pqc-kem",
+      "posture": "recommended",
+      "min_key_bits": 192,
+      "notes": ["Suitable for guardian secure channels."]
+    }
+  ],
+  "timestamp": "2025-12-02T13:50:00Z"
+}
+```
+
+The wallet can cache this and use it for:
+
+- local validation rules,
+- advanced settings pages,
+- developer diagnostics.
+
+---
+
+## 5. Endpoint: /v1/advisories
+
+Stream‑like endpoint for **security advisories and emergency notices**.
+
+```http
+GET /v1/advisories?since=2025-12-01T00:00:00Z
+```
+
+### Example Response
+
+```json
+{
+  "advisories": [
+    {
+      "id": "adv-2025-001",
+      "severity": "high",
+      "affected_algorithms": ["ecdsa-secp256k1"],
+      "summary": "Practical quantum speedup evidence for discrete-log.",
+      "recommended_actions": [
+        "stop-creating-new-ecdsa-keys",
+        "prefer-hybrid-or-pqc",
+        "plan-rotation-within-180-days"
+      ]
+    },
+    {
+      "id": "adv-2025-002",
+      "severity": "critical",
+      "affected_algorithms": ["toy-pqc-xyz"],
+      "summary": "Catastrophic break in experimental PQC scheme.",
+      "recommended_actions": [
+        "ban-algorithm",
+        "rotate-all-keys-within-7-days"
+      ]
+    }
+  ],
+  "has_more": false
+}
+```
+
+Guardian / Risk Engine consume this to:
+
+- flip posture flags from `recommended` → `legacy_only` or `banned`,
+- trigger UI banners and rotation flows,
+- inform Adaptive Core of changed assumptions.
+
+---
+
+## 6. Endpoint: /v1/local-posture (optional)
+
+Gives a scoped view of **this specific wallet's** PQC posture, after
+combining QAC recommendations with local capabilities.
+
+```http
+POST /v1/local-posture
 Content-Type: application/json
 ```
 
 ```json
 {
-  "txids": ["abc123...", "def456...", "ghi789..."]
+  "client": "adamantine-wallet",
+  "version": "0.1.0",
+  "capabilities": {
+    "has_pqc_containers": true,
+    "hardware_secure_element": false,
+    "supports_hybrid_signatures": true
+  }
 }
 ```
 
 ```json
 {
-  "results": [
-    { "txid": "abc123...", "confidence": { "level": "high" } },
-    { "txid": "def456...", "confidence": { "level": "medium" } },
-    { "txid": "ghi789...", "confidence": { "level": "low" } }
-  ]
+  "effective_phase": "hybrid-preferred",
+  "recommended_key_domains": [
+    {
+      "domain": "user_wallet",
+      "mode": "hybrid",
+      "algorithms": ["ecdsa-secp256k1", "ml-dsa-65"]
+    },
+    {
+      "domain": "guardian_channel",
+      "mode": "pqc-only",
+      "algorithms": ["ml-kem-768", "ml-dsa-65"]
+    }
+  ],
+  "ui_flags": {
+    "show_rotation_banner": true,
+    "show_pqc_beta_warning": false
+  }
 }
 ```
 
+The wallet may use this to configure:
+
+- which wizards to show,
+- whether to expose PQC options as **beta**,
+- when to prompt for key rotation.
+
 ---
 
-## 4. Degraded Behaviour
+## 7. Degraded Behaviour
 
-When QAC is unavailable:
+When QAC is unreachable:
 
-- Wallet falls back to standard confirmation logic (block count only).
-- Guardian may:
-  - delay treating large incoming payments as fully safe,
-  - treat some outbound flows as slightly higher risk.
+- PQC‑related choices fall back to:
+  - **local static defaults** in `pqc-containers/` config, and
+  - DigiByte core / community advisories shipped with the app.
+- The wallet **must not** silently downgrade to obviously weak choices.
 
-Exact scoring rules are in `risk-engine/scoring-rules.md`.
+When QAC explicitly marks an algorithm as `banned`:
+
+- Adamantine must:
+  - stop offering it for new keys,
+  - warn loudly when existing keys use it,
+  - route rotation / migration tasks to the user as soon as reasonable.
+
+All QAC‑driven changes must be:
+
+- logged in diagnostics,
+- visible in the Security / Advanced section of the wallet,
+- designed so they can be audited later by power users and developers.
