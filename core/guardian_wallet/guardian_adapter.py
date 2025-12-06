@@ -37,10 +37,12 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Optional, Dict, Any
 
-from .engine import GuardianEngine, ActionContext, GuardianVerdict
+# NOTE: import ActionContext from models (the version that supports `meta`)
+from .engine import GuardianEngine, GuardianVerdict
 from .models import (
     RuleAction,
     ApprovalRequest,
+    ActionContext,
 )
 
 
