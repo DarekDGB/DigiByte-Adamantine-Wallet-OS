@@ -1,55 +1,90 @@
-# Shield Bridge — Sentinel API (sentinel-api.md)
-
-Status: **draft v0.1 – internal skeleton**
-
-This document defines how the Adamantine Wallet talks to the **Sentinel AI v2**
-monitoring layer through the Shield Bridge.
-
-Sentinel provides a **read-only, external telemetry view** of the DigiByte
-network and mempool. Adamantine never controls Sentinel; it only **queries
-summaries and feeds events**.
+# 🛡️ Shield Bridge — Sentinel API  
+### *Adamantine Wallet → Sentinel AI v2 Telemetry Interface*  
+**Status:** v0.2 – Internal Architecture Specification  
+**Author:** @Darek_DGB — MIT Licensed  
 
 ---
 
-## 1. Purpose
+Sentinel AI v2 is the **Layer-1 telemetry intelligence** of the DigiByte
+Quantum Shield Network.  
+It provides **external, read-only, real-time analytics** about:
 
-Guardian / Risk Engine need a compact view of:
+- chain stability  
+- mempool conditions  
+- reorg signals  
+- anomaly detection  
+- fee environment trends  
 
-- chain stability
-- mempool health
-- fee environment
-- visible reorg patterns
-- anomaly scores
+The Adamantine Wallet **never controls Sentinel** — it only *queries*
+Sentinel through the Shield Bridge.
 
-Sentinel already computes this. The Sentinel API defines a **thin JSON
-interface** to consume it from the wallet.
+This document defines the wallet-facing **Sentinel API contract** used by:
 
----
-
-## 2. Transport & Auth (Conceptual)
-
-Exact transport is implementation-dependent, but recommended defaults:
-
-- Protocol: HTTPS (or WSS for streaming)
-- Format: JSON
-- Auth: 
-  - optional API key for public instances, or
-  - local-only (localhost / LAN) without auth for self-hosted nodes.
-
-Adamantine should support **multiple Sentinel endpoints** via
-`config/shield-endpoints.yml`.
+- Guardian Wallet  
+- Risk Engine  
+- QWG (Quantum Wallet Guard)  
+- Adaptive Core scoring  
 
 ---
 
-## 3. Endpoint: /v1/summary
+# 1. Purpose of This API
 
-Returns a compact snapshot of current network + mempool health.
+Adamantine requires a compact, trusted summary of the DigiByte environment to
+support the following behaviours:
 
-```http
+### ✔ Guardian preflight checks  
+### ✔ Risk engine scoring  
+### ✔ Fee recommendations  
+### ✔ Transaction-context risk analysis  
+### ✔ Anomaly correlation across layers
+
+Sentinel AI already computes these metrics.  
+The Shield Bridge exposes them in a **thin JSON interface**, optimised for:
+
+- low overhead  
+- mobile performance  
+- multi-Sentinel redundancy  
+- offline-safe degradation  
+
+---
+
+# 2. Transport & Authentication (Conceptual Layer)
+
+Implementation may vary per platform, but recommended defaults:
+
+| Component | Recommendation |
+|----------|----------------|
+| Protocol | HTTPS (REST) or WSS (streaming) |
+| Format   | JSON (UTF-8) |
+| Auth     | optional API key (public nodes), or local-only for self-hosted |
+
+Adamantine supports **multiple Sentinel endpoints** configured in:
+
+```
+config/shield-endpoints.yml
+```
+
+Example:
+
+```yaml
+sentinel:
+  endpoints:
+    - https://sentinel1.dgbsystems.com
+    - https://sentinel.local
+  timeout_ms: 1700
+  fallback_strategy: "round-robin"
+```
+
+---
+
+# 3. Endpoint — `/v1/summary`  
+### *Global Network & Mempool Snapshot*
+
+```
 GET /v1/summary
 ```
 
-### 3.1 Response (example)
+### 3.1 Response Example
 
 ```json
 {
@@ -57,31 +92,38 @@ GET /v1/summary
     "chain": "DGB-mainnet",
     "height": 17500000,
     "best_block_hash": "abc123...",
-    "reorg_risk": "low",               
-    "reorg_score": 0.02,               
+    "reorg_risk": "low",
+    "reorg_score": 0.02,
     "last_reorg_depth": 1,
     "last_reorg_at": "2025-12-02T13:10:00Z"
   },
   "mempool": {
     "tx_count": 1234,
     "estimated_blocks_to_clear": 2,
-    "fee_environment": "normal",       
+    "fee_environment": "normal",
     "min_fee_sats_per_byte": 1,
     "median_fee_sats_per_byte": 3,
     "high_fee_sats_per_byte": 10
   },
   "anomaly": {
-    "score": 0.08,                     
-    "level": "low",                    
-    "top_signals": [
-      "normal_activity"
-    ]
+    "score": 0.08,
+    "level": "low",
+    "top_signals": ["normal_activity"]
   },
   "timestamp": "2025-12-02T13:11:00Z"
 }
 ```
 
-Guardian / Risk Engine primarily care about:
+### 3.2 Consumers Inside Adamantine
+
+| Component | Uses |
+|----------|------|
+| **Risk Engine** | anomaly.level, reorg risk, mempool environment |
+| **Guardian Wallet** | preflight policy gates |
+| **QWG** | recalibrate local heuristics |
+| **Adaptive Core** | combine with internal scoring vectors |
+
+**Minimum fields required by wallet logic:**
 
 - `network.reorg_risk`
 - `mempool.fee_environment`
@@ -89,16 +131,15 @@ Guardian / Risk Engine primarily care about:
 
 ---
 
-## 4. Endpoint: /v1/tx-context
+# 4. Endpoint — `/v1/tx-context`  
+### *Evaluate a Proposed or Finalised Transaction*
 
-Returns Sentinel’s view of **a specific TX** (or a proposed TX template).
-
-```http
+```
 POST /v1/tx-context
 Content-Type: application/json
 ```
 
-### Request
+### Request Body
 
 ```json
 {
@@ -109,9 +150,12 @@ Content-Type: application/json
 }
 ```
 
-- `raw_tx_hex` MAY be omitted for privacy; in that case, only hints are used.
+Notes:
 
-### Response (example)
+- `raw_tx_hex` **may be omitted** to protect privacy.
+- If omitted, Sentinel uses heuristics & hints only.
+
+### Response Example
 
 ```json
 {
@@ -138,20 +182,26 @@ Content-Type: application/json
 }
 ```
 
-Guardian can combine this with local contact info and shield data from
-other layers to derive a final verdict.
+### Consumers
+
+- Guardian uses `tx_risk.level` + internal rules → allow / require approval / block  
+- Risk Engine uses deeper scoring → anomaly reinforcement  
+- QWG uses fee + address patterns for malicious behaviour detection  
 
 ---
 
-## 5. Endpoint: /v1/events
+# 5. Endpoint — `/v1/events` (Optional)  
+### *Send anonymised local events to Sentinel AI v2*
 
-Adamantine MAY (optionally) push anonymised events to Sentinel to enrich
-global anomaly detection, e.g.:
+This endpoint lets Adamantine contribute **privacy-preserving signals** to the
+global anomaly model.
 
-```http
+```
 POST /v1/events
 Content-Type: application/json
 ```
+
+### Example
 
 ```json
 {
@@ -170,18 +220,80 @@ Content-Type: application/json
 }
 ```
 
-This is entirely optional and must follow the privacy rules defined in
-`modules/analytics-telemetry/privacy-model.md`.
+### Privacy Requirements
+
+Must comply with:
+
+```
+modules/analytics-telemetry/privacy-model.md
+```
+
+No personal identifiers.  
+No raw addresses without hashing.  
+Device fingerprints must be **hashed or omitted**.
 
 ---
 
-## 6. Degraded Behaviour
+# 6. Degraded Behaviour (Offline Mode)
 
-When `/v1/summary` or `/v1/tx-context` are unreachable:
+If `/v1/summary` or `/v1/tx-context` fails:
 
-- Shield Bridge marks Sentinel status as `"offline"` or `"degraded"`.
-- Risk Engine treats Sentinel data as **missing** and degrades safely:
-  - assume at least `"unknown"` risk, never blindly `"low"`.
-  - adjust Guardian policies according to `risk-engine/scoring-rules.md`.
+- Shield Bridge marks Sentinel as:  
 
-The wallet must remain functional but more conservative in decisions.
+  - `"offline"`  
+  - `"unreachable"`  
+  - `"degraded"`  
+
+- Risk Engine applies **conservative fallback rules**, e.g.:
+
+### Fallback Logic
+
+| Missing Data | Safe Behaviour |
+|--------------|----------------|
+| reorg signals | assume `"unknown"` risk |
+| mempool environment | assume `"volatile"` |
+| tx risk context | assume `"needs_review"` |
+| anomaly scores | assume `"medium"` |
+
+Wallet remains fully functional **but never over-confident**.
+
+Guardian rules MUST degrade safely according to:
+
+```
+core/risk-engine/scoring-rules.md
+```
+
+---
+
+# 7. Future Extensions (Reserved)
+
+| Future Feature | Purpose |
+|----------------|---------|
+| `/v1/live-stream` | WebSocket real-time feed |
+| `/v1/metrics/*` | richer scoring vectors |
+| `/v1/signal-packets` | compressed event batches for Adaptive Core |
+| `/v1/topology` | network-wide behavioural topology maps |
+
+These are reserved and will be defined in the next architecture phase.
+
+---
+
+# 8. License
+
+```
+MIT License — by @Darek_DGB
+```
+
+---
+
+# 9. Changelog
+
+| Version | Changes |
+|---------|---------|
+| v0.2 | Full rewrite, unified with QAC, ADN, DQSN, Adaptive Core API docs |
+| v0.1 | Initial placeholder skeleton |
+
+---
+
+**End of Specification – Sentinel API v0.2**  
+**Shield Bridge — DigiByte Adamantine Wallet**  
