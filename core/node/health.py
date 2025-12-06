@@ -13,7 +13,7 @@ Tests expect three public entry points:
 
     - NodeMetrics            – raw node measurements
     - NodeHealth             – evaluated health result
-    - score_node_health()    – helper metrics -> health
+    - score_node_health()    – helper metrics -> health (returns status)
 """
 
 from __future__ import annotations
@@ -260,20 +260,21 @@ def score_node_health(
     latency_ms: Optional[float] | None = None,
     failure_ratio: float = 0.0,
     height_drift: int = 0,
-) -> NodeHealth:
+) -> str:
     """
     Convenience wrapper used by tests.
 
-    It supports two call patterns:
+    It supports two call patterns and always returns the **status string**
+    (one of NodeHealth.UNKNOWN / HEALTHY / DEGRADED / UNHEALTHY):
 
     1) With NodeMetrics (preferred):
 
         m = NodeMetrics(latency_ms=200, failure_ratio=0.0, height_drift=0)
-        health = score_node_health(m)
+        status = score_node_health(m)
 
     2) With raw primitives (legacy):
 
-        health = score_node_health(
+        status = score_node_health(
             True,              # reachable
             latency_ms=200.0,
             failure_ratio=0.1,
@@ -282,12 +283,14 @@ def score_node_health(
     """
 
     if isinstance(metrics_or_reachable, NodeMetrics):
-        return NodeHealthScorer.score_metrics(metrics_or_reachable)
+        health = NodeHealthScorer.score_metrics(metrics_or_reachable)
+        return health.status
 
     reachable = bool(metrics_or_reachable)
-    return NodeHealthScorer.score_node(
+    health = NodeHealthScorer.score_node(
         reachable=reachable,
         latency_ms=latency_ms,
         failure_ratio=failure_ratio,
         height_drift=height_drift,
     )
+    return health.status
