@@ -44,9 +44,10 @@ class SendResult:
         result.error_message -> str | None
 
     Legacy tests still expect dict-like access:
-        result["status"] -> "blocked" | "needs_approval" | "broadcasted" | "failed"
-        result["tx_id"]  -> str | None
-        result["error"]  -> error_message | None
+        result["status"]   -> "blocked" | "needs_approval" | "broadcasted" | "failed"
+        result["tx_id"]    -> str | None
+        result["error"]    -> error_message | None
+        result["guardian"] -> guardian_decision object
     """
 
     status: SendStatus
@@ -68,7 +69,7 @@ class SendResult:
 
     def __getitem__(self, key: str) -> Any:
         """
-        Allow result["status"], result["tx_id"], result["error"] access.
+        Allow result["status"], result["tx_id"], result["error"], result["guardian"].
 
         This keeps `SendResult` compatible with older dict-based tests.
         """
@@ -78,6 +79,8 @@ class SendResult:
             return self.tx_id
         if key == "error":
             return self.error_message
+        if key == "guardian":
+            return self.guardian_decision
         raise KeyError(key)
 
 
@@ -131,6 +134,33 @@ class WalletService:
             return self.node_manager.client
         raise RuntimeError("Node manager does not expose a node getter or client")
 
+    @staticmethod
+    def _interpret_guardian_decision(decision: Any) -> tuple[bool, bool]:
+        """
+        Normalise different guardian decision shapes into (blocked, needs_approval).
+
+        Handles:
+          - decision.blocked (bool)
+          - decision.needs (bool)
+          - decision.needs_approval (bool or method returning bool)
+        """
+        blocked = bool(getattr(decision, "blocked", False))
+
+        # Some test doubles use a simple boolean `.needs`,
+        # others expose `needs_approval()` as a method.
+        needs_flag = getattr(decision, "needs", False)
+
+        needs_attr = getattr(decision, "needs_approval", None)
+        if callable(needs_attr):
+            needs_method_val = needs_attr()
+        elif needs_attr is None:
+            needs_method_val = False
+        else:
+            needs_method_val = needs_attr
+
+        needs_approval = bool(needs_flag or needs_method_val)
+        return blocked, needs_approval
+
     # ------------------------------------------------------------------
     # Public API — DGB sends
     # ------------------------------------------------------------------
@@ -162,8 +192,6 @@ class WalletService:
         # ------------------------------------------------------------------
         decision: Any = None
         if self.guardian is not None and hasattr(self.guardian, "evaluate_send_dgb"):
-            # Try the richest call first; fall back to simpler forms if
-            # the DummyGuardian in tests uses a shorter signature.
             amount_for_guardian = (
                 value_dgb
                 if value_dgb is not None
@@ -174,6 +202,8 @@ class WalletService:
                 else 0
             )
 
+            # Try the richest signature first; fall back if test doubles
+            # don't accept certain kwargs.
             try:
                 decision = self.guardian.evaluate_send_dgb(
                     wallet_id=wallet_id,
@@ -183,24 +213,16 @@ class WalletService:
                     tx_hex=tx_hex,
                 )
             except TypeError:
-                # progressively drop optional kwargs for maximum
-                # compatibility with the test doubles.
                 try:
                     decision = self.guardian.evaluate_send_dgb(
                         wallet_id, account_id, amount_for_guardian
                     )
                 except TypeError:
                     decision = self.guardian.evaluate_send_dgb(
-                        wallet_id, account_id, amount_for_guardian
+                        wallet_id, account_id
                     )
 
-            # DummyDecision / GuardianDecision in tests expose:
-            #   - blocked (bool)
-            #   - needs (bool) or needs_approval()
-            blocked = getattr(decision, "blocked", False)
-            needs_approval = getattr(decision, "needs", False) or getattr(
-                decision, "needs_approval", False
-            )
+            blocked, needs_approval = self._interpret_guardian_decision(decision)
 
             if blocked:
                 return SendResult(
@@ -287,10 +309,8 @@ class WalletService:
                 account_id=account_id,
                 amount_units=amount_units,
             )
-            blocked = getattr(decision, "blocked", False)
-            needs_approval = getattr(decision, "needs", False) or getattr(
-                decision, "needs_approval", False
-            )
+            blocked, needs_approval = self._interpret_guardian_decision(decision)
+
             if blocked:
                 return SendResult(
                     status=SendStatus.BLOCKED,
@@ -341,8 +361,8 @@ class WalletService:
         """
         High-level helper for DigiDollar redeem (DD -> DGB).
 
-        Tests only currently check the blocked case, but we keep full
-        behaviour for symmetry with `mint_dd`.
+        Tests currently check the blocked behaviour but we keep full
+        logic for symmetry with `mint_dd`.
         """
         decision: Any = None
         if self.guardian is not None and hasattr(self.guardian, "evaluate_redeem_dd"):
@@ -351,10 +371,8 @@ class WalletService:
                 account_id=account_id,
                 amount_units=amount_units,
             )
-            blocked = getattr(decision, "blocked", False)
-            needs_approval = getattr(decision, "needs", False) or getattr(
-                decision, "needs_approval", False
-            )
+            blocked, needs_approval = self._interpret_guardian_decision(decision)
+
             if blocked:
                 return SendResult(
                     status=SendStatus.BLOCKED,
