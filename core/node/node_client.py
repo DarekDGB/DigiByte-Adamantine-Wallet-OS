@@ -20,19 +20,68 @@ from dataclasses import dataclass
 from typing import Any, Dict, Optional, List
 
 
-@dataclass
+@dataclass(init=False)
 class NodeConfig:
     """
     Represents a single node entry from config/example-nodes.yml.
+
+    Test compatibility:
+
+    The unit tests construct this as:
+
+        NodeConfig(name="node_a", host="host", port=8332)
+
+    while the Adamantine code historically used:
+
+        NodeConfig(id="node_a", host="host", rpc_port=8332)
+
+    This class supports **both** calling styles. Internally we keep
+    the original attributes:
+
+        id, host, rpc_port, tls, username, password, timeout_ms
     """
 
     id: str
     host: str
     rpc_port: int
-    tls: bool = False
-    username: Optional[str] = None
-    password: Optional[str] = None
-    timeout_ms: int = 3000
+    tls: bool
+    username: Optional[str]
+    password: Optional[str]
+    timeout_ms: int
+
+    def __init__(
+        self,
+        *,
+        # Adamantine-style parameters
+        id: Optional[str] = None,
+        rpc_port: Optional[int] = None,
+        # Test-style / friendly parameters
+        name: Optional[str] = None,
+        port: Optional[int] = None,
+        # Shared
+        host: str,
+        tls: bool = False,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
+        timeout_ms: int = 3000,
+    ) -> None:
+        """
+        Accept both (id + rpc_port) and (name + port).
+
+        Precedence:
+          - id takes precedence over name
+          - rpc_port takes precedence over port
+        """
+        effective_port = rpc_port if rpc_port is not None else (port if port is not None else 8332)
+        effective_id = id or name or f"{host}:{effective_port}"
+
+        self.id = effective_id
+        self.host = host
+        self.rpc_port = effective_port
+        self.tls = tls
+        self.username = username
+        self.password = password
+        self.timeout_ms = timeout_ms
 
 
 class NodeClientError(Exception):
@@ -61,7 +110,7 @@ class NodeClient:
     # Internal helper
     # ---------------------------------------------------------
 
-    def _rpc(self, method: str, params: list[Any]) -> Any:
+    def _rpc(self, method: str, params: List[Any]) -> Any:
         """
         Send JSON-RPC request to DigiByte node.
         """
@@ -84,7 +133,7 @@ class NodeClient:
         try:
             with urllib.request.urlopen(req, timeout=timeout_sec) as resp:
                 data = json.load(resp)
-        except Exception as e:
+        except Exception as e:  # pragma: no cover - safety
             raise NodeClientError(f"RPC error calling {method}: {e}")
 
         if "error" in data and data["error"]:
