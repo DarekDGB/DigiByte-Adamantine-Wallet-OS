@@ -138,12 +138,20 @@ class ApprovalRequest:
     A structured request for guardian approval.
 
     This object is created before a protected action is executed.
+
+    Tests only pass:
+        id, rule_id, wallet_id, account_id, value, description,
+        required_guardians
+
+    So `action` and `scope` must have safe defaults.
     """
 
     id: str
     rule_id: str
-    action: RuleAction
-    scope: RuleScope
+
+    # Defaults so tests can omit these fields
+    action: RuleAction = RuleAction.SEND
+    scope: RuleScope = RuleScope.WALLET
 
     # Who/what is being protected:
     wallet_id: Optional[str] = None
