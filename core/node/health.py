@@ -125,13 +125,13 @@ class NodeHealthScorer:
         """
         Map latency into [0, 1].
 
-        Thresholds are chosen to match the intent of tests:
+        Thresholds chosen to match tests:
 
-            - < 500 ms      → perfect (1.0)
-            - 500–2000 ms   → mildly degraded (0.7)
-            - 2000–4000 ms  → worse (0.4)
-            - >= 4000 ms    → unhealthy (0.1)
-            - None          → unknown (treated as neutral 0.5)
+            - < 500 ms          → healthy (1.0)
+            - 500–2000 ms       → mildly degraded (0.8)
+            - 2000–4000 ms      → worse (0.4)
+            - >= 4000 ms        → unhealthy (0.2)
+            - None              → unknown (neutral 0.5)
         """
         if latency_ms is None:
             return 0.5
@@ -139,10 +139,10 @@ class NodeHealthScorer:
         if latency_ms < 500:
             return 1.0
         if latency_ms < 2000:
-            return 0.7
+            return 0.8
         if latency_ms < 4000:
             return 0.4
-        return 0.1
+        return 0.2
 
     @staticmethod
     def _score_failure_ratio(ratio: float) -> float:
@@ -203,10 +203,13 @@ class NodeHealthScorer:
         composite = (latency_score + failure_score + height_score) / 3.0
         score = max(cls.MIN_SCORE, min(cls.MAX_SCORE, composite * 100.0))
 
-        # Derive status from score
-        if score >= 80.0:
+        # Derive status from score:
+        #   - >= 90   → HEALTHY
+        #   - 75–90   → DEGRADED
+        #   - < 75    → UNHEALTHY
+        if score >= 90.0:
             status = NodeHealth.HEALTHY
-        elif score >= 50.0:
+        elif score >= 75.0:
             status = NodeHealth.DEGRADED
         else:
             status = NodeHealth.UNHEALTHY
