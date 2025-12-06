@@ -39,10 +39,8 @@ Content-Type: application/json
 {
   "client": "adamantine-wallet",
   "version": "0.1.0",
-
   "profile_fingerprint": "hashed-or-omitted",
-  "device_class": "mobile-ios" ,    
-
+  "device_class": "mobile-ios",
   "events": [
     {
       "kind": "guardian-verdict",
@@ -83,9 +81,8 @@ GET /v1/policy-hints?profile_security_level=paranoid
 
 ```json
 {
-  "global_risk_level": "medium",       
+  "global_risk_level": "medium",
   "valid_for_seconds": 3600,
-
   "escalations": [
     {
       "id": "esc-001",
@@ -99,7 +96,6 @@ GET /v1/policy-hints?profile_security_level=paranoid
       "recommended_action": "block-and-alert"
     }
   ],
-
   "notes": [
     "Elevated risk detected in last hour. Suggest tightening for large sends.",
     "DD mint operations show abnormal patterns; consider temporary halt."
@@ -107,16 +103,13 @@ GET /v1/policy-hints?profile_security_level=paranoid
 }
 ```
 
-Guardian merges this with **local config** (`guardian-wallet/configs.md`)
-and user preferences (`ProfileGuardianConfig`) to compute the effective
-runtime policy.
+Guardian merges this with **local config** and user preferences to compute the effective runtime policy.
 
 ---
 
 ## 4. Endpoint: /v1/context-risk (optional)
 
-Query contextual risk for a given high-level action without sending
-full details.
+Query contextual risk for a given high-level action without sending full details.
 
 ```http
 POST /v1/context-risk
@@ -157,14 +150,13 @@ When Adaptive Core is unreachable:
 - Guardian falls back to static config + real-time shield signals only.
 - No adaptive escalations are applied.
 
-When Adaptive Core explicitly signals **emergency** (via policy hints
-or another dedicated channel), Guardian may:
+When Adaptive Core explicitly signals **emergency**:
 
-- override some user preferences temporarily,
+- Guardian may override some user preferences temporarily,
 - enter enforced lock / stricter mode as defined in configs.
 
 All such decisions must be:
 
 - logged locally,
 - visible in diagnostics,
-- time-bounded (never permanent without user confirmation).
+- time-bounded.
