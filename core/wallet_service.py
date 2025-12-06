@@ -14,8 +14,15 @@ it provides high-level methods that:
   - talk to a node client for broadcasting
   - return clear results for the UI layer
 
-The actual transaction construction will be implemented later, once the
-DigiByte Core / DigiAssets plumbing is in place.
+Unit tests expect three main methods:
+
+  - send_dgb(...)
+  - mint_dd(...)
+  - redeem_dd(...)
+
+Each returns one of the status strings:
+
+  "blocked" | "needs_approval" | "broadcasted" | "failed"
 """
 
 from __future__ import annotations
@@ -32,7 +39,7 @@ from modules.dd_minting.engine import DDMintingEngine
 
 
 class SendStatus(Enum):
-    """High-level status for a DGB send attempt."""
+    """High-level status for a DGB send attempt (for future richer APIs)."""
     ALLOWED = auto()
     PENDING_GUARDIAN = auto()
     BLOCKED = auto()
@@ -42,10 +49,10 @@ class SendStatus(Enum):
 @dataclass
 class SendResult:
     """
-    Result object returned by WalletService.send_dgb().
+    Rich result object for potential future UI usage.
 
-    This is intentionally wallet- / UI-friendly and does not expose
-    low-level Guardian or node internals.
+    NOTE: current unit tests only use the simple string statuses returned
+    by WalletService methods. This type is kept for future extension.
     """
     status: SendStatus
     tx_id: Optional[str] = None
@@ -53,25 +60,88 @@ class SendResult:
     error_message: Optional[str] = None
 
 
-@dataclass
 class WalletService:
     """
     Thin orchestration layer for wallet actions.
 
-    Dependencies are injected so this can be tested easily and wired up
-    differently on Android / iOS / Web:
+    Tests construct this as:
 
-      - guardian: GuardianAdapter
-      - node_manager: an object that can return the "best" node client
-        via `get_best_node()` or `get_preferred_node()`.
+        WalletService(guardian_adapter=..., node_manager=...)
 
-    The node client itself is expected to expose a `broadcast_tx(tx)`
-    method that returns a tx_id string. For now, this is abstract and
-    can be mocked in tests.
+    or
+
+        WalletService(guardian=..., node_manager=...)
+
+    The `node_manager` is an object that can yield a node client via
+    one of:
+
+        - get_best_node()
+        - get_active_client()
+        - get_preferred_node()
+        - .client   (attribute)
+
+    The node client used in tests usually exposes:
+
+        - send_dgb(wallet_id, account_id, amount_units)
+        - mint_dd(wallet_id, account_id, amount_units)
+        - redeem_dd(wallet_id, account_id, amount_units)
     """
 
-    guardian: GuardianAdapter
-    node_manager: Any  # NodeManager-like object
+    def __init__(
+        self,
+        *,
+        guardian_adapter: Optional[GuardianAdapter] = None,
+        guardian: Optional[GuardianAdapter] = None,
+        node_manager: Any,
+    ) -> None:
+        # Allow both guardian_adapter= and guardian=
+        if guardian_adapter is None and guardian is not None:
+            guardian_adapter = guardian
+
+        if guardian_adapter is None:
+            raise ValueError("WalletService requires a GuardianAdapter (guardian_adapter= or guardian=)")
+        if node_manager is None:
+            raise ValueError("WalletService requires a node_manager")
+
+        self.guardian: GuardianAdapter = guardian_adapter
+        self.node_manager: Any = node_manager
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _get_node_client(self) -> Any:
+        """
+        Helper to obtain a node client from the node manager.
+
+        Supports several naming styles so tests can plug in simple fakes.
+        """
+        mgr = self.node_manager
+
+        if hasattr(mgr, "get_best_node"):
+            return mgr.get_best_node()
+        if hasattr(mgr, "get_active_client"):
+            return mgr.get_active_client()
+        if hasattr(mgr, "get_preferred_node"):
+            return mgr.get_preferred_node()
+        if hasattr(mgr, "client"):
+            return mgr.client
+
+        raise RuntimeError("Node manager does not expose a node getter")
+
+    @staticmethod
+    def _status_from_decision(decision: GuardianDecision) -> Optional[str]:
+        """
+        Convert a GuardianDecision into an early status where appropriate.
+
+        Returns:
+            "blocked" | "needs_approval" | None
+        """
+        if decision.is_blocked():
+            return "blocked"
+        if decision.needs_approval():
+            return "needs_approval"
+        return None
 
     # ------------------------------------------------------------------
     # Public API — DGB sends
@@ -79,77 +149,132 @@ class WalletService:
 
     def send_dgb(
         self,
+        *,
         wallet_id: str,
         account_id: str,
-        to_address: str,
-        amount_minor: int,
+        amount_units: int,
         description: str = "DGB send",
-    ) -> SendResult:
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """
         Orchestrate a DGB send with Guardian checks.
 
-        Steps:
-          1. Ask GuardianAdapter if the action is allowed.
-          2. If BLOCKED -> return blocked result.
-          3. If REQUIRE_APPROVAL -> return pending result (UI should
-             surface guardian approval flow).
-          4. If ALLOW -> build a placeholder tx and ask the node client
-             to broadcast it.
-
-        NOTE: actual transaction construction is left as a future step.
-        Here we only model the control flow and node interaction.
+        Returns one of:
+            "blocked" | "needs_approval" | "broadcasted" | "failed"
         """
-        # 1) Guardian pre-check
-        decision = self.guardian.evaluate_send_dgb(
+        meta = meta or {}
+
+        decision: GuardianDecision = self.guardian.evaluate_send_dgb(
             wallet_id=wallet_id,
             account_id=account_id,
-            value_dgb=amount_minor,
+            value_dgb=amount_units,
             description=description,
-            meta={"to_address": to_address},
+            meta=meta,
         )
 
-        if decision.is_blocked():
-            return SendResult(
-                status=SendStatus.BLOCKED,
-                guardian_decision=decision,
-                error_message="Action blocked by Guardian policy.",
-            )
+        early = self._status_from_decision(decision)
+        if early is not None:
+            # BLOCKED or REQUIRE_APPROVAL – do not call the node.
+            return early
 
-        if decision.needs_approval():
-            # The UI layer is expected to drive the approval UX.
-            return SendResult(
-                status=SendStatus.PENDING_GUARDIAN,
-                guardian_decision=decision,
-            )
-
-        # 2) Guardian allowed -> talk to node backend
+        # Allowed → talk to node
+        client = self._get_node_client()
         try:
-            node_client = self._get_node_client()
-            # Placeholder transaction object. In the future this will be
-            # replaced with a real DigiByte transaction structure.
-            tx = {
-                "from_account": account_id,
-                "to_address": to_address,
-                "amount": amount_minor,
-                "description": description,
-            }
-
-            tx_id = node_client.broadcast_tx(tx)  # type: ignore[attr-defined]
-
-            return SendResult(
-                status=SendStatus.ALLOWED,
-                tx_id=tx_id,
-                guardian_decision=decision,
+            client.send_dgb(
+                wallet_id=wallet_id,
+                account_id=account_id,
+                amount_units=amount_units,
             )
-        except Exception as exc:  # pragma: no cover - defensive logging
-            return SendResult(
-                status=SendStatus.FAILED,
-                guardian_decision=decision,
-                error_message=str(exc),
-            )
+            return "broadcasted"
+        except Exception:
+            return "failed"
 
     # ------------------------------------------------------------------
-    # Public API — DigiDollar (DD) previews
+    # Public API — DigiDollar (DD) mint / redeem operations
+    # ------------------------------------------------------------------
+
+    def mint_dd(
+        self,
+        *,
+        wallet_id: str,
+        account_id: str,
+        amount_units: int,
+        description: str = "Mint DigiDollar (DD)",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Guarded DigiDollar mint (DGB -> DD).
+
+        Returns:
+            "blocked" | "needs_approval" | "broadcasted" | "failed"
+        """
+        meta = meta or {}
+
+        decision: GuardianDecision = self.guardian.evaluate_mint_dd(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dgb_value_in=amount_units,
+            description=description,
+            meta={"flow": "dd_mint", **meta},
+        )
+
+        early = self._status_from_decision(decision)
+        if early is not None:
+            return early
+
+        client = self._get_node_client()
+        try:
+            client.mint_dd(
+                wallet_id=wallet_id,
+                account_id=account_id,
+                amount_units=amount_units,
+            )
+            return "broadcasted"
+        except Exception:
+            return "failed"
+
+    def redeem_dd(
+        self,
+        *,
+        wallet_id: str,
+        account_id: str,
+        amount_units: int,
+        description: str = "Redeem DigiDollar (DD)",
+        meta: Optional[Dict[str, Any]] = None,
+    ) -> str:
+        """
+        Guarded DigiDollar redeem (DD -> DGB).
+
+        Returns:
+            "blocked" | "needs_approval" | "broadcasted" | "failed"
+        """
+        meta = meta or {}
+
+        decision: GuardianDecision = self.guardian.evaluate_redeem_dd(
+            wallet_id=wallet_id,
+            account_id=account_id,
+            dd_amount=amount_units,
+            description=description,
+            meta={"flow": "dd_redeem", **meta},
+        )
+
+        early = self._status_from_decision(decision)
+        if early is not None:
+            return early
+
+        client = self._get_node_client()
+        try:
+            client.redeem_dd(
+                wallet_id=wallet_id,
+                account_id=account_id,
+                amount_units=amount_units,
+            )
+            return "broadcasted"
+        except Exception:
+            return "failed"
+
+    # ------------------------------------------------------------------
+    # Public API — DigiDollar (DD) *previews* (your original helpers)
     # ------------------------------------------------------------------
 
     def preview_dd_mint(
@@ -259,21 +384,3 @@ class WalletService:
                 else None
             ),
         }
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    def _get_node_client(self) -> Any:
-        """
-        Helper to obtain a node client from the node manager.
-
-        We support both `get_best_node()` and `get_preferred_node()`
-        naming to keep this adapter flexible.
-        """
-        if hasattr(self.node_manager, "get_best_node"):
-            return self.node_manager.get_best_node()
-        if hasattr(self.node_manager, "get_preferred_node"):
-            return self.node_manager.get_preferred_node()
-
-        raise RuntimeError("Node manager does not expose a node getter")
