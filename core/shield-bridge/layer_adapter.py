@@ -14,7 +14,10 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from .models import LayerResult, RiskPacket
+# IMPORTANT:
+# Relative imports do NOT work because shield-bridge is not a package.
+# Tests add core/shield-bridge to sys.path, so we import top-level modules.
+from models import LayerResult, RiskPacket
 
 
 class BaseLayerAdapter(ABC):
