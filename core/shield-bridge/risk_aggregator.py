@@ -12,8 +12,11 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from .exceptions import AggregationError
-from .models import LayerResult, RiskMap
+# IMPORTANT:
+# shield-bridge is not a Python package, so we cannot use relative imports.
+# Tests add this directory to sys.path, so we import top-level modules.
+from exceptions import AggregationError
+from models import LayerResult, RiskMap
 
 
 class RiskAggregator:
