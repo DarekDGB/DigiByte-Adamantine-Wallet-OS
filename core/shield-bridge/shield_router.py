@@ -14,10 +14,14 @@ from __future__ import annotations
 
 from typing import Dict, Iterable
 
-from .exceptions import LayerUnavailableError
-from .layer_adapter import BaseLayerAdapter, build_default_adapters
-from .models import LayerResult, RiskMap, RiskPacket
-from .risk_aggregator import RiskAggregator
+# IMPORTANT:
+# shield-bridge is not a Python package, so tests add this directory
+# directly to sys.path and we import top-level modules instead of
+# using relative imports.
+from exceptions import LayerUnavailableError
+from layer_adapter import BaseLayerAdapter, build_default_adapters
+from models import LayerResult, RiskMap, RiskPacket
+from risk_aggregator import RiskAggregator
 
 
 class ShieldRouter:
@@ -63,4 +67,7 @@ class ShieldRouter:
             raise LayerUnavailableError("no shield layers are configured")
 
         results = list(self._iter_layer_results(packet))
-        return self.aggregator.build_risk_map(packet_id=packet.packet_id, results=results)
+        return self.aggregator.build_risk_map(
+            packet_id=packet.packet_id,
+            results=results,
+        )
