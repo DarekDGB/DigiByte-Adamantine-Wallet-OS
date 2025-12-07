@@ -28,7 +28,8 @@ jobs:
           echo "📁 Web client tree:"
           ls -R ./clients/web
 
-      # TODO: When the real web app is added, extend this job with:
-      # - Node / pnpm / yarn install
-      # - Lint + unit tests
-      # - Optional build step for deployment
+      # Web workflow placeholder.
+      # Detailed web-client tests (linting, builds, unit tests, and dependency installs)
+      # will be introduced during the Adamantine v0.3 implementation phase.
+      # For v0.2 architecture, this workflow validates that the web client structure exists
+      # and can be inspected safely in CI without causing failures.
