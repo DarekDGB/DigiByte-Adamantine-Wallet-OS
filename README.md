@@ -1,215 +1,207 @@
 # 🚀 DigiByte Adamantine Wallet  
-### *Next-Generation Quantum-Secure Wallet & Layer-0 / Layer-5 Shield Integration*  
-**By @Darek_DGB — MIT-Licensed.**
+### *Next‑Generation Quantum‑Secure Wallet & 5‑Layer Defense Architecture*  
+**By @Darek_DGB — MIT Licensed**
 
 ---
 
-## 🛡️ What Is Adamantine?
+# 🛡️ What Is Adamantine?
 
-The **DigiByte Adamantine Wallet** is the first wallet designed as a complete **defensive architecture**, integrating:
+The **DigiByte Adamantine Wallet** is the first wallet designed as a complete  
+**multi‑layer defensive system**, integrating:
 
-- **Guardian Wallet** (next-gen rule-based protection)
-- **Quantum Wallet Guard (QWG)**
-- **DigiAssets Engine (v3 architecture)**
-- **DigiDollar (DD) minting**
-- **Enigmatic Layer-0 Messaging** (JohnnyLaw)
-- **Adaptive Core** (self-learning immune system)
-- **5-Layer DigiByte Quantum Shield Network**  
-  **Sentinel → DQSN → ADN → QWG → Adaptive Core**
+- **Sentinel AI v2** — mempool anomaly detection  
+- **DQSN v2** — network safety & multi‑node confirmation  
+- **ADN v2** — autonomous defense node (lockdown engine)  
+- **QWG** — Quantum Wallet Guard (key posture + PQC migration)  
+- **Adaptive Core** — behavior‑based immune system  
+- **Guardian Wallet** — rule & policy engine  
+- **Shield Bridge** — risk aggregation & cross‑layer coordination  
+- **DigiAssets Engine** — minting, transfers, parsing & indexing  
+- **DigiDollar (DD) minting engine**  
+- **Enigmatic Chat** — Layer‑0 messaging protocol  
+- **Clients** — Android / iOS / Web skeletons
 
-Adamantine is not “just a wallet.”  
+Adamantine is not “a wallet.”  
 It is a **security operating system** for DigiByte.
 
 ---
 
-## ✨ Vision
+# 🌍 Vision
 
-To create the most **secure**, **self-healing**, **multi-asset**, **multi-client** DigiByte wallet ever developed.
-
-This project is built for:
-
-- everyday users  
-- developers  
-- advanced power users  
-- guardians  
-- institutions seeking future-proof blockchain security  
-
-All of it is **open-source (MIT)** and multi-platform.
+To create the most secure, self‑healing, multi‑asset wallet ever built for DigiByte —  
+designed for everyday users *and* for future quantum‑threat environments.
 
 ---
 
-## 🔥 Why Adamantine Is Unique
+# 🛠️ Developer Quickstart
 
-### **1. Quantum-Resistant Security**
-Security is not a plugin. It is the architecture.
+This repository contains the full **v0.2 architecture + runtime skeleton**, including:
 
-Integrated with the full **DigiByte Quantum Shield**:
-
-- **Sentinel AI**: node drift + anomaly detection  
-- **DQSN v2**: distributed confirmations & attestation  
-- **ADN v2**: autonomous defense and lockdown  
-- **QWG**: wallet-level post-quantum threat blocking  
-- **Adaptive Core**: machine-learned immune system that strengthens with every attack  
-
----
-
-### **2. Guardian Wallet — Human + Machine Safety Layer**
-
-Guardian Wallet introduces programmable safety rules:
-
-- Approvals for high-value transactions  
-- Multi-guardian protection  
-- Device-binding rules  
-- Minting restrictions  
-- Settings-change protection  
-
-A modern, intelligent evolution of wallet security.
+- 5-layer Quantum Shield  
+- Guardian Wallet policy engine  
+- Shield Bridge runtime  
+- DigiAssets engine + schemas  
+- DD minting  
+- Enigmatic integration  
+- Node RPC & safety layer  
+- Adaptive Core  
+- 65 passing tests  
+- Full CI stack (Android/iOS/Web/Python)
 
 ---
 
-### **3. DigiAssets Engine (v3)**
+## 📌 Project Status — v0.2 Complete
 
-Adamantine includes a fully modular DigiAssets system:
+| Component | Status |
+|----------|--------|
+| Architecture | ✅ Complete |
+| Runtime Skeleton | ✅ Done |
+| Shield Bridge | ✅ v0.2 implemented |
+| Guardian Engine | ✅ Skeleton done |
+| DigiAssets Spec | ✅ Full |
+| QWG (Quantum Guard) | ✅ Spec done |
+| DD Minting | ✅ Implemented |
+| Node Glue | ✅ Implemented |
+| Tests | ✅ 65 passing |
+| CI | ✅ All green |
+| Next Phase | v0.3 Implementation |
 
-- asset parsing  
-- asset indexing  
-- transfer rules  
-- burn rules  
-- minting rules  
-- metadata schema validation  
-
-Designed to be future-proof, with clean module separation.
-
----
-
-### **4. DigiDollar (DD) Minting Engine**
-
-The world’s first wallet with **native DigiDollar minting**:
-
-- guardian-secured mints  
-- metadata schema validation  
-- per-mint and total supply caps  
-- rule-driven minting policies  
+The project is **ready for DigiByte Core developer onboarding**.
 
 ---
 
-### **5. Enigmatic Layer-0 Messaging (JohnnyLaw)**
-
-Adamantine integrates directly with **Enigmatic**, a Layer-0 protocol using DigiByte UTXOs as communication planes.
-
-This enables:
-
-- wallet-to-wallet messaging  
-- payment requests  
-- encrypted structured intents  
-- Zero-trust communication without third-party servers  
-
----
-
-### **6. Multi-Client Architecture**
-
-Adamantine provides a unified foundation for:
-
-- **Web (PWA)**  
-- **Android**  
-- **iOS**  
-
-All three clients share the same core logic via structured bindings.
-
----
-
-### **7. Modular Core Layout**
+# 📁 Repository Structure
 
 ```
 core/
+  adaptive-core/
   digiassets/
   guardian-wallet/
-  risk-engine/
+  node/
   pqc-containers/
   qwg/
+  risk-engine/
   shield-bridge/
-  data-models/
-```
-
-Every module is isolated, documented, and testable.
-
----
-
-## 📚 Documentation
-
-```
+modules/
+  dd-minting/
+  digiassets/
+  enigmatic-chat/
+clients/
+  android/
+  ios/
+  web/
 docs/
-  vision.md
-  architecture-overview.md
-  shield-integration.md
-  dd-overview.md
-  enigmatic-overview.md
-  roadmap.md
+tests/
+.github/
 ```
 
-Each subsystem includes additional module-specific documentation.
+Each subsystem is fully documented in `docs/` with API files for Sentinel, DQSN, ADN, QWG, Adaptive Core & Shield Bridge.
 
 ---
 
-## 🧪 Testing Foundation
+# ▶️ Running Tests
 
-The repository includes structured test suites:
+Requirement: **Python 3.11**
 
-- Guardian engine tests  
-- Risk engine tests  
-- DigiAssets parser tests  
-- DigiAssets indexer tests  
-- Transaction rules tests  
+```bash
+git clone https://github.com/.../DigiByte-Adamantine-Wallet.git
+cd DigiByte-Adamantine-Wallet
 
-Ensuring long-term reliability and safe upgrades.
+python3 -m venv .venv
+source .venv/bin/activate      # macOS / Linux
+# or .venv\Scripts\activate  # Windows
 
----
+pip install -r requirements.txt   # if provided
+pytest -q
+```
 
-## 🧱 Status — December 2025
+Expected:
 
-### ✓ COMPLETE
-- Full architecture skeleton  
-- Core documentation suite  
-- Guardian models + engine  
-- DigiAssets engine modules  
-- Risk engine  
-- UI skeletons for 3 clients  
-- Configuration system  
-- Initial test suite coverage  
-
-### 🚧 IN DEVELOPMENT
-- DigiDollar (DD) mint engine  
-- Enigmatic chat integration  
-- PQC container bindings  
-- Adaptive Core behaviour  
-- Unified transaction builder  
-- Live node RPC orchestration  
-
-### 🔜 COMING NEXT
-- Full signing pipeline  
-- Transaction crafting and broadcasting  
-- Guardian approval workflows  
-- Real-time shield integration  
+```
+65 passed in X.XXs
+```
 
 ---
 
-## 💠 Why Adamantine Matters for DigiByte
+# 🧱 Architecture Layers — Summary
 
-This project elevates DigiByte into:
+### **1. Sentinel AI v2**  
+Mempool, topology & fee-plane analysis.
 
-- a **quantum-aware blockchain ecosystem**  
-- with **layer-0 encrypted messaging**  
-- **multi-asset smart capabilities**  
-- **the strongest wallet-level defense system in the industry**  
+### **2. DQSN v2**  
+Network disagreement, multi-node confirmation, reorg signals.
 
-Adamantine demonstrates DigiByte's true potential when innovation, security, and vision align.
+### **3. ADN v2**  
+Node reflex + lockdown engine.
+
+### **4. QWG**  
+Quantum Wallet Guard (PQC posture & signing protection).
+
+### **5. Adaptive Core**  
+Behavioral immune system (learning stability index).
+
+### **6. Guardian Wallet**  
+Rule-based policy engine (approve, deny, challenge flows).
+
+### **7. Shield Bridge**  
+RiskPacket → Layer evaluations → aggregated RiskMap.
+
+### **8. DigiAssets Engine**  
+Minting, burning, validation, indexing & metadata safety rules.
+
+### **9. Enigmatic (Layer‑0 Messaging)**  
+DigiByte transaction topology as messaging channels.
 
 ---
 
-## 👤 Author
+# 🔒 Security Model
 
-Created by **@Darek_DGB**  
- 
-A vision for DigiByte’s future — open-source, unstoppable, divine-guided.
+Adamantine’s layered model:
+
+- isolates risk  
+- detects anomalies early  
+- aggregates multiple perspectives  
+- integrates node safety + mempool safety + PQC posture + behavior models  
+- produces deterministic Guardian decisions  
+
+The layers reinforce each other like a **digital immune system**.
 
 ---
+
+# 📜 Roadmap (v0.2 → v0.3)
+
+See full roadmap at:
+
+```
+docs/roadmap.md
+```
+
+Current status:
+
+- v0.2 fully completed  
+- v0.3 scheduled to implement live adapters + UI clients  
+- future versions to expand cross-layer intelligence  
+
+---
+
+# 🤝 Contributing
+
+1. Follow naming standards:  
+   - `snake_case` for Python  
+   - `kebab-case` for documentation  
+
+2. New features must include tests.  
+3. Update relevant docs before submitting PRs.  
+4. Keep CI green.  
+5. Maintain MIT-compatible contributions.
+
+---
+
+# 🙏 Credits & Intent
+
+Built with discipline, vision, and faith.  
+For DigiByte, for security, for the future.
+
+**Glory to God.**  
+**Created by @Darek_DGB.**
+
