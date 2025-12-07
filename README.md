@@ -33,6 +33,56 @@ designed for everyday users *and* for future quantum‑threat environments.
 
 ---
 
+# 🔗 Node Connectivity (RPC + DigiMobile / Enigmatic)
+
+Adamantine includes a flexible node‑connection layer inside:
+
+```
+core/node/
+  rpc_client.py
+  node_client.py
+  node_manager.py
+  health.py
+```
+
+This layer provides:
+
+### ✔ Standard DigiByte Node Connectivity  
+Supports full RPC for:
+- block fetch  
+- mempool state  
+- tx broadcast  
+- node health checks  
+- reorg awareness  
+- peer analysis  
+
+### ✔ Lightweight Node Mode — Compatible With JohnnyLaw’s **DigiMobile**  
+Adamantine can operate using a lightweight node backend such as  
+**DigiMobile**, because:
+
+- `node_client` does not require full RPC  
+- works with partial RPC, proxy APIs, or custom endpoints  
+- Enigmatic Layer‑0 signals integrate directly into Guardian + Shield Bridge  
+
+DigiMobile integration is achieved through:
+
+- pluggable node adapters  
+- fallback RPC modes  
+- Enigmatic transaction‑plane communication  
+
+### ✔ Why This Matters
+
+Users will be able to run Adamantine:
+
+- with a **full node**  
+- with a **remote node**  
+- with **DigiMobile lightweight node**  
+- or hybrid mode: DigiMobile (messaging) + RPC (confirmations)
+
+This makes Adamantine extremely flexible and ideal for mobile devices.
+
+---
+
 # 🛠️ Developer Quickstart
 
 This repository contains the full **v0.2 architecture + runtime skeleton**, including:
@@ -126,10 +176,10 @@ Expected:
 # 🧱 Architecture Layers — Summary
 
 ### **1. Sentinel AI v2**  
-Mempool, topology & fee-plane analysis.
+Mempool, topology & fee‑plane analysis.
 
 ### **2. DQSN v2**  
-Network disagreement, multi-node confirmation, reorg signals.
+Network disagreement, multi‑node confirmation, reorg signals.
 
 ### **3. ADN v2**  
 Node reflex + lockdown engine.
@@ -164,7 +214,7 @@ Adamantine’s layered model:
 - integrates node safety + mempool safety + PQC posture + behavior models  
 - produces deterministic Guardian decisions  
 
-The layers reinforce each other like a **digital immune system**.
+This creates a **digital immune system**.
 
 ---
 
@@ -204,4 +254,3 @@ For DigiByte, for security, for the future.
 
 **Glory to God.**  
 **Created by @Darek_DGB.**
-
