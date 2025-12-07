@@ -28,7 +28,7 @@ jobs:
           echo "📁 iOS client tree:"
           ls -R ./clients/ios
 
-      # TODO: When the native iOS app is added, extend this job with:
-      # - Xcode project / workspace detection
-      # - xcodebuild build + unit tests
-      # - fastlane integration (optional)
+      # iOS workflow placeholder.
+      # Full native iOS build & test steps will be added during the Adamantine v0.3 implementation phase.
+      # For v0.2 architecture, this job verifies that the iOS client structure exists
+      # and can be inspected in CI without failing the pipeline.
