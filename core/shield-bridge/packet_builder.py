@@ -10,7 +10,9 @@ from __future__ import annotations
 import uuid
 from typing import Any, Dict, Optional
 
-from .models import RiskPacket
+# IMPORTANT:
+# shield-bridge is not a Python package, so we import top-level modules.
+from models import RiskPacket
 
 
 def new_packet_id() -> str:
