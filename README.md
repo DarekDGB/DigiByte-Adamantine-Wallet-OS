@@ -181,19 +181,25 @@ The critical module linking Adamantine to the **Quantum Shield**:
 modules/dd_minting/
 ```
 
+**DigiDollar is a concept originally introduced by DigiByte founder Jared Tate.**  
+Adamantine implements an open-source minting engine to support and extend that vision.
+
 Capabilities:
 
 - mint DigiDollar tokens (DD)  
 - update ledgers  
 - validate supply rules  
-- integrate with wallet engine  
-- expose clean API for clients  
+- integrate with the wallet engine  
+- expose a clean API for clients  
 
-DigiDollar is:
+DigiDollar in Adamantine is:
 
 - **non-inflationary**  
 - **deterministic**  
 - **fully auditable**  
+
+Concept credit: **Jared Tate**  
+Architecture and engine implementation: **@DarekDGB (MIT-licensed)**
 
 ---
 
