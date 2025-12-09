@@ -27,6 +27,20 @@ quantum-resistant, modular, secure, intelligent, and entirely open-source.
 
 ---
 
+## 🔗 External MIT Modules Acknowledgment
+
+Adamantine does **not** reimplement or claim ownership of external DigiByte community projects.  
+It provides clean integration layers for existing MIT-licensed modules, including:
+
+- **Enigmatic (Layer-0 messaging)** — created by @JohnnyLaw  
+- **DigiMobile / Node tools** — also created by @JohnnyLaw  
+
+Adamantine uses *adapters* to connect with these systems when they are available.  
+All credit for the underlying protocols belongs to their original authors.  
+Adamantine’s architecture simply enables them to work together within a unified Wallet-OS.
+
+---
+
 # 🧱 Architecture Summary
 
 Adamantine Wallet is structured as:
@@ -163,8 +177,6 @@ The critical module linking Adamantine to the **Quantum Shield**:
 
 # 🪙 DigiDollar (DD) — Native Minting Engine
 
-Located in:
-
 ```
 modules/dd_minting/
 ```
@@ -225,15 +237,15 @@ Q-ID provides:
 modules/enigmatic_chat/
 ```
 
-Built from JohnnyLaw’s MIT-licensed Layer-0 messaging stack.
+Integrated via JohnnyLaw’s MIT-licensed Layer-0 messaging stack.
 
-Adamantine integrates:
+Adamantine includes:
 
 - message encoder  
 - channel manager  
 - protocol adapter  
 
-This allows **encrypted, fee-based, blockchain-aligned messaging** inside the wallet.
+This enables **encrypted, fee-based, blockchain-aligned messaging** inside the wallet.
 
 ---
 
@@ -248,9 +260,9 @@ Lightweight, anonymised, and optional.
 Tracks:
 
 - crashes  
-- UI flows  
-- performance  
-- shield interaction patterns  
+- UI patterns  
+- performance metrics  
+- shield interaction signals  
 
 Always compliant with user privacy.
 
@@ -267,18 +279,18 @@ modules/integrations/digimobile.py
 Adamantine connects to:
 
 - local DigiByte Core nodes  
-- DigiMobile nodes (JohnnyLaw)  
-- multiple fallback nodes  
+- DigiMobile nodes (MIT-licensed by JohnnyLaw)  
+- fallback node pools  
 - node reputation scoring  
-- node health evaluation  
+- health-based priority selection  
 
-Your repo already includes beautiful tests for this:
+Tests include:
 
 - `test_node_manager_priority_logic.py`  
 - `test_node_manager_errors.py`  
 - `test_node_manager_digimobile_preference.py`
 
-This is **real enterprise-grade node routing**.
+This is **enterprise-grade node routing**.
 
 ---
 
@@ -294,14 +306,14 @@ Evaluates:
 - network risk  
 - reorg probability  
 - mempool anomalies  
-- timing conditions  
+- timing patterns  
 - node health  
 
 Outputs flow into:
 
 - Guardian Wallet warnings  
-- QWG rule engine  
-- Adaptive Core learning signals  
+- QWG  
+- Adaptive Core signals  
 
 ---
 
@@ -313,7 +325,7 @@ Adamantine is the **execution layer** of the shield:
 DQSN  →  Sentinel  →  ADN  →  QWG  →  Guardian Wallet  →  Adamantine Wallet
 ```
 
-It receives:
+Receives:
 
 - metrics  
 - anomalies  
@@ -322,33 +334,27 @@ It receives:
 - guardianship actions  
 - adaptive learning signals  
 
-This makes Adamantine the **first quantum-secure wallet OS** in DigiByte history.
+Making Adamantine the **first quantum-secure wallet OS** in DigiByte history.
 
 ---
 
 # 🔍 Documentation
 
-All system-level specifications live under:
+Located in:
 
 ```
 docs/
-├── architecture/
-├── shield/
-├── risk/
-└── identity/
 ```
 
-These include:
+Includes:
 
-- Wallet OS model  
-- Client structure  
-- Shield integration  
-- Node design  
-- DigiAssets v3  
-- DigiDollar minting  
-- Q-ID identity system  
-
-Your documentation is equivalent to a **full enterprise architecture specification**.
+- architecture  
+- shield layers  
+- risk model  
+- identity system  
+- DigiAssets v3 spec  
+- DigiDollar  
+- node design  
 
 ---
 
@@ -358,18 +364,17 @@ Your documentation is equivalent to a **full enterprise architecture specificati
 tests/
 ```
 
-Includes full coverage for:
+Includes coverage for:
 
-- wallet state  
+- wallet engine  
 - node manager  
 - risk engine  
-- DigiAssets parser  
+- DigiAssets v3  
 - shield bridge  
-- transaction builders  
 - guardian adapter  
-- integration tests for full wallet flows  
+- full wallet flows  
 
-This is production-grade engineering.
+Production-level test depth.
 
 ---
 
@@ -377,15 +382,14 @@ This is production-grade engineering.
 
 See `CONTRIBUTING.md`.
 
-Key principles:
+Key rules:
 
-- no architecture removal  
-- no collapsing modules  
-- no mixing UI and engine logic  
+- no module removal  
+- no collapsing structure  
+- no consensus changes  
 - no black-box ML  
-- no consensus modifications  
-- all shield layers must remain intact  
-- tests must remain green  
+- no breaking shield layers  
+- tests must stay green  
 
 Only structured improvements accepted.
 
