@@ -45,7 +45,6 @@ Adamantine’s architecture simply enables them to work together within a unifie
 
 Adamantine Wallet is structured as:
 
-```
 DigiByte-Adamantine-Wallet/
 │
 ├── clients/               # Android, iOS, Web clients (UI & app logic)
@@ -55,7 +54,6 @@ DigiByte-Adamantine-Wallet/
 ├── config/                # Guardian rules, network parameters
 ├── tests/                 # End-to-end and unit tests
 └── .github/workflows/     # CI for Android • iOS • Web • Docs
-```
 
 Each subsystem is completely modular, versioned, explainable, and independently testable.
 
@@ -65,7 +63,6 @@ Each subsystem is completely modular, versioned, explainable, and independently 
 
 Adamantine is the **only DigiByte wallet** designed to deeply integrate all 5 layers of the Shield:
 
-```
    Sentinel AI v2        (Anomaly Detection)
    DQSN v2               (Network Health & Entropy)
    ADN v2                (Active Defence Playbooks)
@@ -74,7 +71,6 @@ Adamantine is the **only DigiByte wallet** designed to deeply integrate all 5 la
    Adaptive Core v2      (Learning & Fusion)
                 ↓
      Adamantine Wallet (Final Execution Layer)
-```
 
 Adamantine is where **all shield intelligence becomes real protection**.
 
@@ -95,12 +91,10 @@ Adamantine is built on six principles:
 
 # 📱 Clients (Android • iOS • Web)
 
-```
 clients/
 ├── android/
 ├── ios/
 └── web/
-```
 
 Each client receives:
 
@@ -118,7 +112,6 @@ The wallet OS layer guarantees identical behaviour across all three environments
 
 # 🔧 Core Infrastructure
 
-```
 core/
 ├── wallet_engine/
 ├── digiassets/
@@ -126,9 +119,8 @@ core/
 ├── guardian_adapter/
 ├── shield_bridge/
 └── utxo_manager.py, fee_estimator.py, state, builders...
-```
 
-### 🔹 **Wallet Engine**
+### Wallet Engine  
 Implements:
 
 - wallet state  
@@ -138,8 +130,8 @@ Implements:
 - fee estimation  
 - sync interfaces  
 
-### 🔹 **DigiAssets Engine**
-`core/digiassets/`
+### DigiAssets Engine  
+core/digiassets/
 
 Handles:
 
@@ -148,8 +140,8 @@ Handles:
 - asset transfer logic  
 - asset state tracking  
 
-### 🔹 **DigiAssets v3 Engine**
-`core/digiassets_v3/`
+### DigiAssets v3 Engine  
+core/digiassets_v3/
 
 Next-generation asset protocol:
 
@@ -158,15 +150,15 @@ Next-generation asset protocol:
 - new ownership rules  
 - future-proof PQC adaptability  
 
-### 🔹 **Guardian Adapter**
+### Guardian Adapter  
 Connects wallet actions to:
 
 - Guardian Wallet warnings  
 - QWG behavioural rules  
 - Shield risk conditions  
 
-### 🔹 **Shield Bridge**
-The critical module linking Adamantine to the **Quantum Shield**:
+### Shield Bridge  
+Links Adamantine to the **Quantum Shield**:
 
 - reads Sentinel, DQSN, ADN outputs  
 - evaluates node health  
@@ -177,9 +169,7 @@ The critical module linking Adamantine to the **Quantum Shield**:
 
 # 🪙 DigiDollar (DD) — Native Minting Engine
 
-```
 modules/dd_minting/
-```
 
 **DigiDollar is a concept originally introduced by DigiByte founder Jared Tate.**  
 Adamantine implements an open-source minting engine to support and extend that vision.
@@ -194,20 +184,18 @@ Capabilities:
 
 DigiDollar in Adamantine is:
 
-- **non-inflationary**  
-- **deterministic**  
-- **fully auditable**  
+- non-inflationary  
+- deterministic  
+- fully auditable  
 
-Concept credit: **Jared Tate**  
-Architecture and engine implementation: **@DarekDGB (MIT-licensed)**
+Concept credit: Jared Tate  
+Architecture and engine implementation: @DarekDGB (MIT-licensed)
 
 ---
 
 # 🧩 DigiAssets v3
 
-```
 core/digiassets_v3/
-```
 
 Includes:
 
@@ -216,15 +204,11 @@ Includes:
 - new execution engine  
 - examples & reference spec  
 
-This is one of the strongest future-facing upgrades in the entire repo.
-
 ---
 
 # 🔐 Q-ID (Quantum Identity System)
 
-```
 docs/identity/
-```
 
 Q-ID provides:
 
@@ -233,114 +217,89 @@ Q-ID provides:
 - recovery paths  
 - identity-bound asset permissions  
 
-100% ready for Falcon / Dilithium.
+Fully prepared for Falcon / Dilithium integration.
 
 ---
 
 # 💬 Enigmatic Layer-0 Messenger
 
-```
 modules/enigmatic_chat/
-```
 
 Integrated via JohnnyLaw’s MIT-licensed Layer-0 messaging stack.
 
-Adamantine includes:
+Includes:
 
 - message encoder  
 - channel manager  
 - protocol adapter  
 
-This enables **encrypted, fee-based, blockchain-aligned messaging** inside the wallet.
+Supports encrypted, fee-based, blockchain-aligned messaging.
 
 ---
 
 # 📡 Analytics & Telemetry
 
-```
 modules/analytics_telemetry/
-```
-
-Lightweight, anonymised, and optional.
 
 Tracks:
 
 - crashes  
 - UI patterns  
-- performance metrics  
+- performance  
 - shield interaction signals  
 
-Always compliant with user privacy.
+Always optional & privacy-respecting.
 
 ---
 
 # 🌐 Node Integration
 
-```
-core/shield_bridge/
-core/node_manager.py
+core/shield_bridge/  
+core/node_manager.py  
 modules/integrations/digimobile.py
-```
 
 Adamantine connects to:
 
-- local DigiByte Core nodes  
-- DigiMobile nodes (MIT-licensed by JohnnyLaw)  
+- local DigiByte nodes  
+- DigiMobile nodes  
 - fallback node pools  
 - node reputation scoring  
-- health-based priority selection  
-
-Tests include:
-
-- `test_node_manager_priority_logic.py`  
-- `test_node_manager_errors.py`  
-- `test_node_manager_digimobile_preference.py`
-
-This is **enterprise-grade node routing**.
+- health-based prioritisation  
 
 ---
 
 # 🛡️ Risk Engine
 
-```
-core/shield_bridge/risk_engine.py
+core/shield_bridge/risk_engine.py  
 docs/risk/*
-```
 
 Evaluates:
 
 - network risk  
-- reorg probability  
+- reorg likelihood  
 - mempool anomalies  
 - timing patterns  
 - node health  
 
-Outputs flow into:
+Feeds into:
 
-- Guardian Wallet warnings  
+- Guardian Wallet  
 - QWG  
-- Adaptive Core signals  
+- Adaptive Core  
 
 ---
 
-# 🔄 Shield Integration (Full Stack)
+# 🛡 Security Simulation Reports
 
-Adamantine is the **execution layer** of the shield:
+The following attack simulation reports are included in:
 
-```
-DQSN  →  Sentinel  →  ADN  →  QWG  →  Guardian Wallet  →  Adamantine Wallet
-```
+**`docs/security/`**
 
-Receives:
+- **Simulation Report 01 — Full-Spectrum Wallet Takeover**  
+- **Simulation Report 02 — Insider & Supply-Chain Compromise**  
+- **Simulation Report 03 — Quantum Harvest & PQC Downgrade Attack**
 
-- metrics  
-- anomalies  
-- defence strategies  
-- transaction decisions  
-- guardianship actions  
-- adaptive learning signals  
-
-Making Adamantine the **first quantum-secure wallet OS** in DigiByte history.
+These reports are part of the Adamantine Shield training framework.
 
 ---
 
@@ -348,9 +307,7 @@ Making Adamantine the **first quantum-secure wallet OS** in DigiByte history.
 
 Located in:
 
-```
 docs/
-```
 
 Includes:
 
@@ -358,19 +315,17 @@ Includes:
 - shield layers  
 - risk model  
 - identity system  
-- DigiAssets v3 spec  
+- DigiAssets v3  
 - DigiDollar  
-- node design  
+- node integration  
 
 ---
 
 # 🧪 Test Suite
 
-```
 tests/
-```
 
-Includes coverage for:
+Covers:
 
 - wallet engine  
 - node manager  
@@ -380,15 +335,13 @@ Includes coverage for:
 - guardian adapter  
 - full wallet flows  
 
-Production-level test depth.
-
 ---
 
 # 🧙 Contribution Guidelines
 
-See `CONTRIBUTING.md`.
+See CONTRIBUTING.md.
 
-Key rules:
+Rules:
 
 - no module removal  
 - no collapsing structure  
@@ -397,13 +350,9 @@ Key rules:
 - no breaking shield layers  
 - tests must stay green  
 
-Only structured improvements accepted.
-
 ---
 
 # 📜 License
 
 MIT License  
 © 2025 **DarekDGB**
-
-This architecture is free to use with mandatory attribution.
