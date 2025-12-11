@@ -123,4 +123,4 @@ Testnet Training Recommendations
 ---
 
 Objective  
-Ensure no insider, CI compromise, or subtle code edit can silently weaken Adamantine or the 5-Layer Quantum Shield on mainnet.
+Ensure no insider, CI compromise, or subtle code edit can silently weaken Adamantine or the 5-Layer Quantum Shield before releasing the mainnet wallet build.
