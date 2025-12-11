@@ -364,10 +364,6 @@ Includes:
 
 ➡️ Security Simulation Reports (01–03) are available in docs/security/
 
-sim-attack-01-wallet-takeover.md
-sim-attack-02-insider-supply-chain.md
-sim-attack-03-quantum-harvest.md
-
 ---
 
 # 🧪 Test Suite
