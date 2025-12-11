@@ -110,4 +110,4 @@ This produces a complete behavioural profile.
 ---
 
 **Objective:**  
-Train Adamantine & Shield to recognize slow-drain and device-level compromise patterns *before* mainnet.
+Train Adamantine & Shield to recognize slow-drain and device-level compromise patterns *before* releasing the mainnet wallet build.
