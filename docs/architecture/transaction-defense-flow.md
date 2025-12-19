@@ -37,23 +37,23 @@ graph TB
     %% =========================
     Start --> Sentinel
 
-    subgraph L1["LAYER 1 â Sentinel AI v2 (Detection)"]
+    subgraph L1["LAYER 1 - Sentinel AI v2 (Detection)"]
         Sentinel["Pattern Detection<br/>Anomaly Analysis<br/>Threat Scoring"]
     end
 
-    subgraph L2["LAYER 2 â DQSN v2 (Network Intelligence)"]
+    subgraph L2["LAYER 2 - DQSN v2 (Network Intelligence)"]
         DQSN["Global Threat Signals<br/>Cross-Node Correlation<br/>Risk Aggregation"]
     end
 
-    subgraph L3["LAYER 3 â ADN v2 (Defense Orchestration)"]
+    subgraph L3["LAYER 3 - ADN v2 (Defense Orchestration)"]
         ADN["Defense Coordination<br/>Playbook Selection<br/>Response Strategy"]
     end
 
-    subgraph L4["LAYER 4 â QWG (Transaction Gate)"]
-        QWG["Transaction Safety Checks<br/>PQC Verification<br/>Reputation & Context"]
+    subgraph L4["LAYER 4 - QWG (Transaction Gate)"]
+        QWG["Transaction Safety Checks<br/>PQC Verification<br/>Reputation and Context"]
     end
 
-    subgraph L5["LAYER 5 â Guardian Wallet (User Control)"]
+    subgraph L5["LAYER 5 - Guardian Wallet (User Control)"]
         Guardian["Risk Presentation<br/>User Policy Enforcement<br/>Final Authorization"]
     end
 
@@ -64,19 +64,19 @@ graph TB
 
     Guardian --> Decision{Risk Level}
 
-    Decision -->|LOW| Approve["â Approved<br/>Transaction Proceeds"]
-    Decision -->|MEDIUM| Challenge["â ï¸ Challenge<br/>User Confirmation"]
-    Decision -->|HIGH| Block["ð« Blocked<br/>Transaction Halted"]
+    Decision -->|LOW| Approve["Approved<br/>Transaction Proceeds"]
+    Decision -->|MEDIUM| Challenge["Challenge<br/>User Confirmation"]
+    Decision -->|HIGH| Block["Blocked<br/>Transaction Halted"]
 
     Approve --> AdaptiveCore
     Challenge --> AdaptiveCore
     Block --> AdaptiveCore
 
     %% =========================
-    %% INTELLIGENCE & LEARNING PLANE
+    %% INTELLIGENCE AND LEARNING PLANE
     %% =========================
     subgraph Adaptive["ADAPTIVE CORE v2 (Learning Plane)"]
-        AdaptiveCore["Continuous Learning<br/>Pattern Memory<br/>Model & Rule Updates"]
+        AdaptiveCore["Continuous Learning<br/>Pattern Memory<br/>Model and Rule Updates"]
     end
 
     AdaptiveCore -.Feedback Loop.-> Sentinel
@@ -103,17 +103,16 @@ graph TB
 
 ## Design Principles
 
-- **User sovereignty first** â the user remains the final authority
-- **Fail-safe defaults** â high-risk actions are blocked
-- **Defense in depth** â no single layer is trusted
-- **Learning without control** â intelligence improves protection without
-  removing agency
+- **User sovereignty first** - the user remains the final authority
+- **Fail-safe defaults** - high-risk actions are blocked
+- **Defense in depth** - no single layer is trusted
+- **Learning without control** - intelligence improves protection without removing agency
 
 ---
 
 ## Notes
 
-This document describes wallet-layer behavior only.  
+This document describes wallet-layer behavior only.
 It does not modify blockchain consensus, cryptography,
 or protocol rules.
 
