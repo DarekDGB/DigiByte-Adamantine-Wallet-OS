@@ -364,6 +364,19 @@ Includes:
 
 ➡️ Security Simulation Reports (01–03) are available in docs/security/
 
+## Architecture
+
+Adamantine Wallet is designed as a **user-first protection layer** that operates
+at the wallet level without modifying blockchain consensus or cryptography.
+
+The architecture focuses on:
+- Local-first enforcement and user sovereignty
+- Layered defense against user error, malware, and manipulation
+- Optional network intelligence without centralization
+- Safe failure behavior under uncertainty or offline conditions
+
+📐 **[Architecture Overview](docs/architecture/ARCHITECTURE.md)**  
+
 ---
 
 # 🧪 Test Suite
