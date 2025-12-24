@@ -1,6 +1,6 @@
 # Security Policy
 
-Adamantine Wallet takes security seriously and welcomes responsible disclosure
+Adamantine Wallet OS takes security seriously and welcomes responsible disclosure
 of vulnerabilities that could affect user safety.
 
 This document explains how to report security issues and what is considered
@@ -69,5 +69,5 @@ for security reporting purposes.
 
 ## Notes
 
-Adamantine Wallet prioritizes user sovereignty, safety,
+Adamantine Wallet OS prioritizes user sovereignty, safety,
 and responsible handling of security research.
