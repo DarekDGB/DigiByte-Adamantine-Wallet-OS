@@ -1,6 +1,6 @@
-# Contributing to DigiByte Adamantine Wallet
+# Contributing to DigiByte Adamantine Wallet OS
 
-**Adamantine Wallet** is not a traditional wallet.  
+**Adamantine Wallet OS** is not a traditional wallet.  
 It is a **full DigiByte Wallet OS**, architected as a modular, multi-client, multi-layer system integrating:
 
 - DigiAssets v3  
@@ -97,7 +97,7 @@ Adamantine follows strict separation principles.
 ---
 
 ### 🚫 3. Consensus or Node Logic
-Adamantine Wallet:
+Adamantine Wallet OS:
 
 - does **NOT** modify consensus  
 - does **NOT** act as a validator  
