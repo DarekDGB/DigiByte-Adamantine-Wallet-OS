@@ -1,6 +1,6 @@
 # Architecture Overview
 
-This document is the **entry point** for the Adamantine Wallet architecture.
+This document is the **entry point** for the Adamantine Wallet OS architecture.
 It provides an ordered view of the system design, threat model, and protection layers.
 
 Adamantine focuses on **user protection at the wallet layer**.
