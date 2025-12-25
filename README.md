@@ -1,4 +1,4 @@
-# 🔷 DigiByte Adamantine Wallet  
+# 🔷 DigiByte Adamantine Wallet OS  
 ### *Quantum-Secure Wallet OS • Shield-Integrated • Multi-Client Architecture*  
 **Architecture by @DarekDGB — MIT Licensed**
 
@@ -6,7 +6,7 @@
 
 # 🌌 Overview
 
-**DigiByte Adamantine Wallet** is not a traditional cryptocurrency wallet.  
+**DigiByte Adamantine Wallet OS** is not a traditional cryptocurrency wallet.  
 It is a **full Wallet Operating System (Wallet-OS)** designed to unify:
 
 - Multi-client DigiByte wallet (Android, iOS, Web)  
@@ -22,7 +22,7 @@ It is a **full Wallet Operating System (Wallet-OS)** designed to unify:
 - Telemetry  
 - End-to-end test layers  
 
-Adamantine Wallet is built to serve as the **primary gateway** for DigiByte’s next era:  
+Adamantine Wallet OS is built to serve as the **primary gateway** for DigiByte’s next era:  
 quantum-resistant, modular, secure, intelligent, and entirely open-source.
 
 ---
@@ -43,7 +43,7 @@ Adamantine’s architecture simply enables them to work together within a unifie
 
 # 🧱 Architecture Summary
 
-Adamantine Wallet is structured as:
+Adamantine Wallet OS is structured as:
 
 ```
 DigiByte-Adamantine-Wallet/
@@ -366,7 +366,7 @@ Includes:
 
 ## Architecture
 
-Adamantine Wallet is designed as a **user-first protection layer** that operates
+Adamantine Wallet OS is designed as a **user-first protection layer** that operates
 at the wallet level without modifying blockchain consensus or cryptography.
 
 The architecture focuses on:
