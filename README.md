@@ -46,7 +46,7 @@ Adamantine’s architecture simply enables them to work together within a unifie
 Adamantine Wallet OS is structured as:
 
 ```
-DigiByte-Adamantine-Wallet/
+DigiByte-Adamantine-Wallet-OS/
 │
 ├── clients/               # Android, iOS, Web clients (UI & app logic)
 ├── core/                  # Wallet engine, UTXO logic, shield bridge, assets
