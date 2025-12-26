@@ -1,11 +1,20 @@
 """
-EQC Engine
+EQC Engine — Equilibrium Confirmation
 
-Single entrypoint that:
-1) runs classifiers to extract signals
-2) applies policy rules to produce a deterministic Verdict
+This is the single EQC entrypoint responsible for:
+1) running deterministic classifiers to extract signals
+2) applying EQC policy rules
+3) producing a deterministic Verdict
 
-This module must remain deterministic and side-effect free.
+EQC (Equilibrium Confirmation):
+- decides only
+- has no side effects
+- never generates keys
+- never signs
+- never executes actions
+
+WSQK may only be invoked by a runtime orchestrator
+after EQC returns VerdictType.ALLOW.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
