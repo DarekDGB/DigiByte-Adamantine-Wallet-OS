@@ -1,8 +1,8 @@
 """
-Transaction Classifier
+Transaction Classifier — EQC Equilibrium Confirmation
 
 Extracts transaction-related signals from EQCContext.
-No decisions. No thresholds enforcement. Just facts.
+No decisions. No thresholds enforcement. Just signals.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
