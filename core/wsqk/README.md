@@ -3,7 +3,7 @@
 WSQK (Wallet-Scoped Quantum Key) is the **execution key model** of **Adamantine Wallet OS**.
 
 It defines how cryptographic keys are derived, scoped, bound, and destroyed **after**
-EQC (Equilibrium Confirmation) has approved an action.
+EQC (Equilibrium Confirmation) has approved an action. 
 
 ---
 
