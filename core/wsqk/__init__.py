@@ -19,7 +19,28 @@ from .scopes import (
     ScopeType,
 )
 
+from .context_bind import (
+    BoundScope,
+    bind_scope_from_eqc,
+    WSQKBindError,
+)
+
+from .executor import (
+    WSQKExecutionResult,
+    execute_with_scope,
+    WSQKExecutionError,
+)
+
 __all__ = [
+    # Scope model
     "WSQKScope",
     "ScopeType",
+    # EQC binding
+    "BoundScope",
+    "bind_scope_from_eqc",
+    "WSQKBindError",
+    # Execution stub (no crypto yet)
+    "WSQKExecutionResult",
+    "execute_with_scope",
+    "WSQKExecutionError",
 ]
