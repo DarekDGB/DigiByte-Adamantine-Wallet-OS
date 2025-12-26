@@ -1,8 +1,8 @@
 """
-EQC Classifiers
+EQC Classifiers — Equilibrium Confirmation
 
-Classifiers compute signals from context (and later from telemetry inputs)
-without making final decisions. They feed EQC policy evaluation.
+Classifiers extract deterministic signals from EQCContext.
+They observe only — they never decide and never return Verdicts.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
