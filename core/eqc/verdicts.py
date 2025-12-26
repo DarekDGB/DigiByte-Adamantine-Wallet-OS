@@ -1,12 +1,17 @@
 """
-EQC Verdicts
+EQC Verdicts — Equilibrium Confirmation
 
-EQC (Execution/Eligibility/Equivalence Quality Control) produces deterministic
-verdicts that gate *all* sensitive actions inside Adamantine Wallet OS.
+This module defines the formal verdict and reasoning model used by
+EQC (Equilibrium Confirmation).
 
-Design rule:
-- EQC decides (policy + risk + context)
-- WSQK executes (scoped key material + signing), only after EQC returns ALLOW.
+Verdicts represent the final decision of EQC and are the ONLY
+authorization signal for privileged actions inside Adamantine Wallet OS.
+
+Core rule:
+- If VerdictType is not ALLOW, no execution may occur.
+- WSQK may only be invoked after VerdictType.ALLOW.
+
+This module contains no execution logic and no cryptographic material.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
