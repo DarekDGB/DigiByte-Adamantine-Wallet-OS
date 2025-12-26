@@ -1,7 +1,10 @@
 """
-Classifier Context Aggregator
+Classifier Aggregator — EQC Equilibrium Confirmation
 
-Runs a set of classifiers against an EQCContext and returns a unified signals map.
+Runs a set of classifiers against an EQCContext and returns a unified
+signals bundle for policy/risk evaluation.
+
+No decisions happen here.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
