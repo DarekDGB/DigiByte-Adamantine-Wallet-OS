@@ -1,6 +1,6 @@
-# EQC — Execution / Eligibility / Equivalence Quality Control
+# EQC — Equilibrium Confirmation
 
-EQC is the **decision brain** of **Adamantine Wallet OS**.
+EQC (Equilibrium Confirmation) is the **decision brain** of **Adamantine Wallet OS**.
 
 It evaluates an immutable execution context and returns a **deterministic verdict**
 that gates *all* sensitive actions inside the Wallet OS.
@@ -36,7 +36,7 @@ It:
   - `DENY`
   - `STEP_UP` (additional verification required)
 
-EQC is **side‑effect free**, **deterministic**, and **fully testable**.
+EQC is **side-effect free**, **deterministic**, and **fully testable**.
 
 ---
 
@@ -60,7 +60,7 @@ EQC observes and decides only.
 EQC decisions are based exclusively on an immutable snapshot:
 
 - Action context (send / mint / redeem / sign, asset, amount, recipient)
-- Device context (type, trust, OS, first‑seen)
+- Device context (type, trust, OS, first-seen)
 - Network context (network, fee rate, peers)
 - User context (biometric availability, PIN)
 - Timestamp + extra metadata
@@ -99,10 +99,10 @@ Policies:
 - Produce the first terminal verdict
 - Separate:
   - hard blocks
-  - step‑up requirements
+  - step-up requirements
   - default allows
 
-### Non‑negotiable rules (v1)
+### Non-negotiable rules (v1)
 
 - Browser context → `DENY`
 - Extension context → `DENY`
