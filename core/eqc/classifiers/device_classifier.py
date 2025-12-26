@@ -1,5 +1,5 @@
 """
-Device Classifier
+Device Classifier — EQC Equilibrium Confirmation
 
 Extracts device/environment signals from EQCContext.
 No decisions. No side effects.
