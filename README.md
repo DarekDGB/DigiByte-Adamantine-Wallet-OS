@@ -364,6 +364,10 @@ Includes:
 
 ➡️ Security Simulation Reports (01–03) are available in docs/security/
 
+### 🔐 Security Architecture
+
+- [Trust Wallet Attack Immunity Checklist](docs/security/trust-wallet-attack-immunity-checklist.md)
+
 ## Architecture
 
 Adamantine Wallet OS is designed as a **user-first protection layer** that operates
