@@ -11,16 +11,22 @@ in scope for this project, and how security architecture decisions are enforced.
 ## Security Architecture (Important)
 
 Adamantine Wallet OS follows a **defense-in-depth Wallet OS model** built around
-a **5-layer shield and Adaptive Core**. The project explicitly avoids
-browser-based signing, browser seed handling, and extension-level trust.
+a **5-layer shield and Adaptive Core**. The project explicitly avoids:
 
-For a clear, testable definition of what attack classes are **structurally blocked**
-(including Trust Wallet–style extension attacks), see:
+- browser-based signing  
+- browser seed handling  
+- extension-level trust  
+- analytics or telemetry sharing a trust boundary with keys or signing  
+
+Security is enforced by **architectural invariants**, not assumptions.
+
+For a clear, testable definition of attack classes that are **structurally blocked**
+(including Trust Wallet–style extension and analytics-trojan attacks), see:
 
 - **[Trust Wallet Attack Immunity Checklist](docs/security/trust-wallet-attack-immunity-checklist.md)**
 
 This checklist defines **non-negotiable security invariants** and serves as an
-architectural contract for contributors and reviewers.
+architectural contract for contributors, reviewers, and auditors.
 
 ---
 
@@ -50,7 +56,8 @@ The following areas are **in scope**:
 - Wallet-layer logic and transaction handling
 - Key custody boundaries and signing authorization flows
 - Policy enforcement and Guardian confirmation mechanisms
-- Adaptive Core risk evaluation and safe-halt behavior
+- Adaptive Core risk evaluation and **safe-halt behavior**
+- Analytics and telemetry **isolation and sandboxing**
 - Failure handling and secure defaults
 - Update integrity, provenance, and release verification
 - Optional network intelligence integration (DQSN)
@@ -67,7 +74,7 @@ The following are **out of scope**:
 - Denial-of-service attacks against public blockchains
 - Social engineering attacks outside of wallet behavior
 - Vulnerabilities that require violating documented security invariants
-  (e.g. browser seed entry or browser signing)
+  (e.g. browser seed entry, browser signing, or analytics executing in key paths)
 
 ---
 
