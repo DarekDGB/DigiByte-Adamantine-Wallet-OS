@@ -1,11 +1,17 @@
 """
-EQC Policy Engine
+EQC Policy Engine — Equilibrium Confirmation
 
-Transforms an EQCContext into a deterministic Verdict using explicit policy rules.
-This module must remain:
-- deterministic
-- side-effect free
-- testable
+This module transforms an EQCContext into a deterministic Verdict
+using explicit, ordered policy rules.
+
+EQC policies:
+- are deterministic
+- are side-effect free
+- never sign or execute actions
+- only decide whether an action is allowed, denied, or requires step-up
+
+EQC (Equilibrium Confirmation) remains the single decision authority.
+WSQK may only be invoked after VerdictType.ALLOW.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
