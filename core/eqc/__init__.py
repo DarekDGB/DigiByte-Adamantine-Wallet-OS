@@ -1,12 +1,16 @@
 """
-EQC — Execution / Eligibility / Equivalence Quality Control
+EQC — Equilibrium Confirmation
 
-EQC is the decision brain of Adamantine Wallet OS.
-It evaluates context, policy, and risk to produce a deterministic Verdict.
+EQC (Equilibrium Confirmation) is the decision brain of Adamantine Wallet OS.
 
-Design invariant:
+It evaluates an immutable execution context and returns a deterministic verdict
+that gates all sensitive actions.
+
+Core invariant:
 - EQC decides
 - WSQK executes (only after VerdictType.ALLOW)
+
+EQC never generates keys, never signs, and never executes actions.
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
@@ -19,6 +23,7 @@ from .verdicts import (
     ReasonCode,
     StepUp,
 )
+
 from .context import (
     EQCContext,
     ActionContext,
@@ -26,6 +31,7 @@ from .context import (
     NetworkContext,
     UserContext,
 )
+
 from .engine import (
     EQCEngine,
     EQCDecision,
