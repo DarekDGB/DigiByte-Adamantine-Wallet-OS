@@ -1,11 +1,12 @@
 """
-EQC Classifier Base
+EQC Classifier Base — Equilibrium Confirmation
 
-Classifiers extract risk and context signals.
+Classifiers extract risk/context signals for EQC (Equilibrium Confirmation).
 They MUST:
 - be deterministic
 - have no side effects
 - never return Verdicts
+- never execute actions or handle key material
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
