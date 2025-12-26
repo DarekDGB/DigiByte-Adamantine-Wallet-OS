@@ -1,11 +1,16 @@
 """
-EQC Context
+EQC Context — Equilibrium Confirmation
 
 Context is the immutable snapshot of conditions under which an action
 is requested inside Adamantine Wallet OS.
 
-EQC decisions must be based ONLY on data present in Context.
-No hidden globals. No side effects.
+EQC (Equilibrium Confirmation) decisions must be based ONLY on data present
+in this Context. No hidden globals. No side effects.
+
+This context may be hashed (`context_hash()`) for:
+- audit logs
+- replay protection
+- downstream binding (WSQK scopes), only after EQC returns ALLOW
 
 Author: DarekDGB
 License: MIT (see root LICENSE)
