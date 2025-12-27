@@ -16,6 +16,7 @@ It is a **full Wallet Operating System (Wallet-OS)** designed to unify:
 - Guardian Wallet (User Protection Layer)  
 - Quantum Wallet Guard (QWG)  
 - Shield Bridge (Sentinel → DQSN → ADN → QWG → Guardian)  
+- Adaptive Core v2 (Learning, Fusion & Signal Correlation)  
 - Enigmatic Layer-0 communications  
 - Node integration (local + DigiMobile)  
 - Risk Engine  
