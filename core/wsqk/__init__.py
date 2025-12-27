@@ -31,6 +31,17 @@ from .executor import (
     WSQKExecutionError,
 )
 
+from .session import (
+    WSQKSession,
+    WSQKSessionError,
+)
+
+from .guard import (
+    WSQKGuardedResult,
+    execute_guarded,
+    WSQKGuardError,
+)
+
 __all__ = [
     # Scope model
     "WSQKScope",
@@ -43,4 +54,11 @@ __all__ = [
     "WSQKExecutionResult",
     "execute_with_scope",
     "WSQKExecutionError",
+    # Session + replay protection
+    "WSQKSession",
+    "WSQKSessionError",
+    # Guarded single-use execution
+    "WSQKGuardedResult",
+    "execute_guarded",
+    "WSQKGuardError",
 ]
