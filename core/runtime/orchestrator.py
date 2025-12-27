@@ -25,8 +25,12 @@ from core.eqc import (
 )
 
 # WSQK is optional for now (scaffold integration)
-from core.wsqk.context_bind import bind_scope_from_eqc, WSQKBindError
-from core.wsqk.executor import execute_with_scope, WSQKExecutionError
+from core.wsqk import (
+    bind_scope_from_eqc,
+    WSQKBindError,
+    execute_with_scope,
+    WSQKExecutionError,
+)
 
 
 class ExecutionBlocked(Exception):
