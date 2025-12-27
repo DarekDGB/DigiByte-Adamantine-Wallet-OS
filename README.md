@@ -21,6 +21,8 @@ It is a **full Wallet Operating System (Wallet-OS)** designed to unify:
 - Risk Engine  
 - Telemetry  
 - End-to-end test layers  
+- **EQC (Equilibrium Confirmation)** — deterministic decision layer  
+- **WSQK (Wallet-Scoped Quantum Key)** — scoped execution authority  
 
 Adamantine Wallet OS is built to serve as the **primary gateway** for DigiByte’s next era:  
 quantum-resistant, modular, secure, intelligent, and entirely open-source.
@@ -49,7 +51,7 @@ Adamantine Wallet OS is structured as:
 DigiByte-Adamantine-Wallet-OS/
 │
 ├── clients/               # Android, iOS, Web clients (UI & app logic)
-├── core/                  # Wallet engine, UTXO logic, shield bridge, assets
+├── core/                  # Wallet engine, EQC, WSQK, shield bridge, assets
 ├── modules/               # DigiDollar, DigiAssets, Enigmatic, telemetry, integrations
 ├── docs/                  # Full whitepapers for each subsystem
 ├── config/                # Guardian rules, network parameters
@@ -58,6 +60,59 @@ DigiByte-Adamantine-Wallet-OS/
 ```
 
 Each subsystem is completely modular, versioned, explainable, and independently testable.
+
+---
+
+# 🔐 Core Security Architecture (EQC + WSQK)
+
+Adamantine enforces an OS-level security invariant:
+
+> **EQC decides. WSQK executes. Runtime enforces.**
+
+There is no bypass path.
+
+### 🔹 EQC — Equilibrium Confirmation
+
+EQC is the **deterministic decision engine** of Adamantine Wallet OS.
+
+It:
+- evaluates an immutable execution context  
+- runs classifiers and explicit policy rules  
+- returns a final verdict (`ALLOW`, `DENY`, `STEP_UP`)  
+
+EQC:
+- has no side effects  
+- does not sign  
+- does not generate keys  
+- does not execute actions  
+
+EQC produces:
+- a verdict  
+- a context hash  
+- a signal bundle  
+
+### 🔹 WSQK — Wallet-Scoped Quantum Key
+
+WSQK defines **execution authority** after EQC approval.
+
+WSQK authority is:
+- scoped to a wallet and specific action  
+- bound to an EQC-approved context hash  
+- time-limited (TTL)  
+- single-use (nonce enforced)  
+- non-reusable across contexts  
+
+There is no static private key to steal.
+
+### 🔹 Runtime Enforcement
+
+A runtime orchestrator guarantees:
+
+- EQC is always evaluated first  
+- WSQK cannot be reached without `ALLOW`  
+- execution is blocked otherwise  
+
+All invariants are enforced in code and locked by CI tests.
 
 ---
 
@@ -73,7 +128,7 @@ Adamantine is the **only DigiByte wallet** designed to deeply integrate all 5 la
    Guardian Wallet       (User Warnings & Protection)
    Adaptive Core v2      (Learning & Fusion)
                 ↓
-     Adamantine Wallet (Final Execution Layer)
+     Adamantine Wallet OS (Final Execution Layer)
 ```
 
 Adamantine is where **all shield intelligence becomes real protection**.
@@ -84,11 +139,11 @@ Adamantine is where **all shield intelligence becomes real protection**.
 
 Adamantine is built on six principles:
 
-1. **Quantum Security First** — PQC support ready via Q-ID and QWG.  
-2. **Explainability** — every decision from the shield is logged and human-understandable.  
+1. **Quantum Security First** — PQC-ready architecture via Q-ID, QWG, and WSQK.  
+2. **Explainability** — every decision (including EQC verdicts) is deterministic and auditable.  
 3. **Modularity** — each subsystem is isolated and upgrade-ready.  
 4. **Multi-Client Parity** — Android, iOS, and Web behave identically.  
-5. **Separation of Concerns** — UI, wallet engine, shield, assets, and identity are independent.  
+5. **Separation of Concerns** — decision (EQC), authority (WSQK), and execution are isolated.  
 6. **Consensus-Neutrality** — Adamantine never changes DigiByte consensus rules.
 
 ---
@@ -111,6 +166,7 @@ Each client receives:
 - DigiDollar minting UX  
 - Node selection via Node Manager  
 - PQC identity hooks for Q-ID  
+- EQC-driven decision feedback  
 
 The wallet OS layer guarantees identical behaviour across all three environments.
 
@@ -121,6 +177,8 @@ The wallet OS layer guarantees identical behaviour across all three environments
 ```
 core/
 ├── wallet_engine/
+├── eqc/                  # Equilibrium Confirmation engine
+├── wsqk/                 # Wallet-Scoped Quantum Key execution layer
 ├── digiassets/
 ├── digiassets_v3/
 ├── guardian_adapter/
@@ -137,6 +195,24 @@ Implements:
 - transaction building  
 - fee estimation  
 - sync interfaces  
+
+### 🔹 **EQC Engine**
+`core/eqc/`
+
+Handles:
+- execution context evaluation  
+- deterministic classifiers  
+- explicit policy enforcement  
+- final action verdicts  
+
+### 🔹 **WSQK Layer**
+`core/wsqk/`
+
+Handles:
+- EQC-bound execution scope  
+- time-limited, single-use authority  
+- nonce-based replay protection  
+- execution gating (no EQC → no execution)  
 
 ### 🔹 **DigiAssets Engine**
 `core/digiassets/`
@@ -190,6 +266,7 @@ Capabilities:
 - update ledgers  
 - validate supply rules  
 - integrate with the wallet engine  
+- execute only after EQC approval  
 - expose a clean API for clients  
 
 DigiDollar in Adamantine is:
@@ -328,7 +405,7 @@ Outputs flow into:
 Adamantine is the **execution layer** of the shield:
 
 ```
-DQSN  →  Sentinel  →  ADN  →  QWG  →  Guardian Wallet  →  Adamantine Wallet
+DQSN  →  Sentinel  →  ADN  →  QWG  →  Guardian Wallet  →  Adamantine Wallet OS
 ```
 
 Receives:
@@ -361,6 +438,7 @@ Includes:
 - DigiAssets v3 spec  
 - DigiDollar  
 - node design  
+- EQC & WSQK architecture  
 
 ➡️ Security Simulation Reports (01–03) are available in docs/security/
 
@@ -374,10 +452,10 @@ Adamantine Wallet OS is designed as a **user-first protection layer** that opera
 at the wallet level without modifying blockchain consensus or cryptography.
 
 The architecture focuses on:
-- Local-first enforcement and user sovereignty
-- Layered defense against user error, malware, and manipulation
-- Optional network intelligence without centralization
-- Safe failure behavior under uncertainty or offline conditions
+- Local-first enforcement and user sovereignty  
+- Layered defense against user error, malware, and manipulation  
+- Optional network intelligence without centralization  
+- Safe failure behavior under uncertainty or offline conditions  
 
 📐 **[Architecture Overview](docs/architecture/ARCHITECTURE.md)**  
 
@@ -392,6 +470,7 @@ tests/
 Includes coverage for:
 
 - wallet engine  
+- EQC and WSQK invariants  
 - node manager  
 - risk engine  
 - DigiAssets v3  
